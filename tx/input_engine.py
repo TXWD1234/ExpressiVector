@@ -1,2 +1,3 @@
 class Input:
-	def getMousePos
+	def getMousePos():
+		pass

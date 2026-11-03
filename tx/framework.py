@@ -3,12 +3,9 @@ import pygame
 import time
 
 class Framework:
-	def __init__(self, windowDimension, updateFunc, renderFunc):
+	def __init__(self, updateFunc, renderFunc):
 		self.update = updateFunc
 		self.render = renderFunc
-		pygame.init()
-		self.screen = pygame.display.set_mode(windowDimension)
-		pygame.display.set_caption("TXProject")
 
 		self.TickInterval = 16666667
 		self.StatInterval = 1_000_000_000
@@ -20,16 +17,15 @@ class Framework:
 		fps = 0
 		ups = 0
 
-		running = True
-		while(running):
+		while(True):
 			while (accumulator >= self.TickInterval):
-				self.update()
+				if (not self.update()):
+					self.quit()
+					return
 				accumulator -= self.TickInterval
 				ups += 1
 
-			running = not any(event.type == pygame.QUIT for event in pygame.event.get())
-
-			self.screen.fill(rgb.MikuColor)
+			#self.screen.fill(rgb.MikuColor)
 			self.render()
 			fps += 1
 			
@@ -45,4 +41,5 @@ class Framework:
 			
 			pygame.display.flip()
 
+	def quit(self):
 		pygame.quit()

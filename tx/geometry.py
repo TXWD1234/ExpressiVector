@@ -184,14 +184,8 @@ def toIvec2(in_vec: vec2) -> ivec2:
 def toVec2(in_coord: ivec2) -> vec2:
 	return vec2(float(in_coord.x()), float(in_coord.y()))
 
-@dataclass(slots=True)
-class Rect:
-	topLeft: ivec2
-	diagnal: ivec2
-	
-	def __init__(self, topLeft: ivec2, width: int, height: int):
-		self.topLeft = topLeft
-		self.diagnal = ivec2(width, height)
+import pygame
 
-	def toPygameRect(self):
-		return (self.topLeft.x)
+type Rect = pygame.Rect
+def makeRect(pos: ivec2, dim: ivec2) -> Rect:
+	return (pos.x, pos.y, dim.x, dim.y)

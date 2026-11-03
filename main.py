@@ -1,19 +1,22 @@
 import tx
-# from projects import Project
-
-
-# engine.main()
-
-# Jerry Liu 2026-10-02
-
 import math
 import random
+import pygame
+pygame.init()
+
+
+
+engine = tx.WidgetEngine(tx.ivec2(800, 600))
+base = engine.base()
+w1 = base.addWidget(tx.RectWidgetBase(pos = tx.ivec2(10, 10), dim = tx.ivec2(100, 100)))
+w1.style.backgroundColor = tx.rgb.Red
+w1.style.roundCornerRadius = 20
 
 def update():
-	pass
+	engine.update()
+	return not any(event.type == pygame.QUIT for event in pygame.event.get())
 def render():
-	
-	pass
+	engine.render()
 
-framework = tx.Framework((800, 600), update, render)
+framework = tx.Framework(update, render)
 framework.run()

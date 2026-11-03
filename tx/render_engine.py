@@ -1,5 +1,5 @@
-from rgb import *
-from geometry import *
+from .rgb import *
+from .geometry import *
 from pygame import draw, typing
 
 class Renderer:
