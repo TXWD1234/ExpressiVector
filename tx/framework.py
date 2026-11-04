@@ -1,3 +1,5 @@
+# Copyright (c) 2026 ExpressiVector. Licensed under the MIT License.
+
 from . import rgb
 import pygame
 import time

@@ -1,3 +1,5 @@
+# Copyright (c) 2026 ExpressiVector. Licensed under the MIT License.
+
 import math
 from dataclasses import dataclass
 
@@ -189,3 +191,6 @@ import pygame
 type Rect = pygame.Rect
 def makeRect(pos: ivec2, dim: ivec2) -> Rect:
 	return (pos.x, pos.y, dim.x, dim.y)
+
+def inRange(range: Rect, pos: ivec2) -> bool:
+	return pygame.Rect(range).collidepoint(pos.x, pos.y)

@@ -1,3 +1,5 @@
+# Copyright (c) 2026 ExpressiVector. Licensed under the MIT License.
+
 Black = (0, 0, 0)
 White = (255, 255, 255)
 Red = (255, 0, 0)
