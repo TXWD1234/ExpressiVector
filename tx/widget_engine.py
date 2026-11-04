@@ -2,9 +2,12 @@
 
 from .geometry import *
 from .rgb import *
-from typing import Protocol
+from typing import Callable, Generic, TypeVar, Self
 from pygame import draw
 from dataclasses import dataclass, field	
+from collections import deque
+
+T = TypeVar('T')
 
 @dataclass(slots=True)
 class WidgetBase:
@@ -27,10 +30,7 @@ class WidgetBase:
 
 	# ================ Object Lifetime ================
 
-	def init():
-		pass
-
-	widgets: list[WidgetBase] = field(default_factory=list)
+	widgets: list[Self] = field(default_factory=list)
 
 	# ================ Main Loop Interface ================
 
@@ -49,10 +49,13 @@ class WidgetBase:
 			w.draw(screen)
 
 	# ================ Public Interface ================
+	'''
+	Strict Public Interface methods by definition must be called only by user manually, exclusively.
+	'''
 
 	def addWidget[T: WidgetBase](self, widget: T) -> T:
 		self.widgets.append(widget)
-		return self.widgets[-1]
+		return widget
 
 	def widget(self, index: int):
 		return self.widgets[index]
@@ -76,9 +79,16 @@ class RectWidgetBase(WidgetBase):
 
 	def addWidget[T: RectWidgetBase](self, widget: T) -> T:
 		widget.pos += self.pos
-		return super().addWidget(widget)
+		super().addWidget(widget)
+		return widget
 
 	# ================ Geometry ================
+
+	'''
+	After initialization, the geometry of the widget should not be modified by
+	the object itself, or mnaually. It should only be modified by the parent's
+	layout manager.
+	'''
 
 	pos: ivec2 = field(default_factory=lambda: ivec2(0, 0)) # position (topLeft)
 	dim: ivec2 = field(default_factory=lambda: ivec2(0, 0)) # dimension
@@ -92,14 +102,92 @@ class RectWidgetBase(WidgetBase):
 
 	style: StyleSheet = field(default_factory=StyleSheet)
 
+	def setStyleSheet(self, cb: Callable[[StyleSheet], StyleSheet]):
+		cb(self.style)
+		self.diff = True
+
+@dataclass(slots=True)
+class LinearLayoutAttribute:
+	order: int = -1 # the index of the widget in the layout
+	proportion: float = 1 # weight out of the total weight of all widgets;
+	                      # absolute: minimum absolute proportion of the entire layout
+	absolute: bool = False
+
+@dataclass(slots=True)
+class LinearLayoutSolver:
+
+	# ================ Public Interface ================
+
+	def addAttrib(self, attrib: LinearLayoutAttribute):
+		self.widgetAttribs.append(attrib)
+
+	def solve(self, basePos, baseLength: int, modifier: Callable[[int, int, int], None]):
+		'''
+		UB if sum of absoluteProportion is bigger then 1.
+		UB if size of self.widgetAttribs mismatches size of parent widget array
+
+		parameter `modifier` will be called with arguments (index, pos, length) aka (index, x, width) / (index, y, height)
+		'''
+		masterProportion: int = sum(i.proportion * (not i.absolute) for i in self.widgetAttribs) # the total weight of all widgets
+		absoluteConsumption: int = sum(i.proportion * (i.absolute) for i in self.widgetAttribs) * baseLength
+		unit: float = (baseLength - absoluteConsumption) / masterProportion if masterProportion > 0 else 0
+		
+		acc: float = basePos
+		orderIndexArray = sorted(range(len(self.widgetAttribs)), key = lambda i: self.widgetAttribs[i].order)
+		for i in orderIndexArray:
+			length = self.widgetAttribs[i].proportion * (baseLength if self.widgetAttribs[i].absolute else unit)
+			modifier(i, int(round(acc)), int(math.floor(length)))
+			acc += length
+
+	# ================ State ================
+	
+	widgetAttribs: list[LinearLayoutAttribute] = field(default_factory=list)
+
+# Horizontal Layout
+@dataclass(slots = True)
+class RectWidgetHLayout(RectWidgetBase):
+	solver: LinearLayoutSolver = field(default_factory=LinearLayoutSolver)
+
+	def modifier_impl(self, i: int, x: int, w: int):
+		self.widgets[i].pos.x = x
+		self.widgets[i].dim.x = w
+	
+	def addWidget[T: RectWidgetBase](self, widget: T, layoutAttrib: LinearLayoutAttribute) -> T:
+		super().addWidget(widget)
+		widget.dim.y = self.dim.y
+		self.solver.addAttrib(layoutAttrib)
+		self.diff = True
+		return widget
+
+	def activateLayout(self):
+		self.solver.solve(self.pos.x, self.dim.x, self.modifier_impl)
+
+# Vertical Layout
+@dataclass(slots = True)
+class RectWidgetVLayout(RectWidgetBase):
+	solver: LinearLayoutSolver = field(default_factory=LinearLayoutSolver)
+
+	def modifier_impl(self, i: int, y: int, h: int):
+		self.widgets[i].pos.y = y
+		self.widgets[i].dim.y = h
+	
+	def addWidget[T: RectWidgetBase](self, widget: T, layoutAttrib: LinearLayoutAttribute) -> T:
+		super().addWidget(widget)
+		widget.dim.x = self.dim.x
+		self.solver.addAttrib(layoutAttrib)
+		self.diff = True
+		return widget
+
+	def activateLayout(self):
+		self.solver.solve(self.pos.y, self.dim.y, self.modifier_impl)
 
 
-class WidgetEngine:
-	def __init__(self, windowDimension: ivec2):
+class WidgetEngine [T: WidgetBase]:
+	def __init__(self, windowDimension: ivec2, BaseWidgetType: type[T]):
 		self.screen = self.screen = pygame.display.set_mode((windowDimension.x, windowDimension.y))
-		self.baseWidget = RectWidgetBase(dim = windowDimension)
+		self.baseWidget = BaseWidgetType(dim = windowDimension)
 
-	def base(self) -> RectWidgetBase:
+	def base(self) -> T:
 		return self.baseWidget
 
 	def render(self):
