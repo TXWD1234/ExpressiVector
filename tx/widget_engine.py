@@ -3,6 +3,7 @@
 
 from .geometry import *
 from .rgb import *
+from .infrastructure import *
 from typing import Callable, Generic, TypeVar, Self
 from pygame import draw
 from dataclasses import dataclass, field, replace
@@ -68,9 +69,11 @@ class WidgetBase:
 	Strict Public Interface methods by definition must be called only by user manually, exclusively.
 	'''
 
-	def addWidget[T: WidgetBase](self, widget: T) -> T:
-		widget.parent = self
-		widget.id = len(self.widgets)
+	def addWidget[T: WidgetBase](self, widgetType: type[T], **args) -> T:
+		widget = widgetType(**(args | {
+				"parent": self,
+				"id": len(self.widgets)
+			}))
 		self.widgets.append(widget)
 		return widget
 
@@ -81,24 +84,27 @@ class WidgetBase:
 
 	diff: bool = True
 
+type WidgetTheme = dict[type[RectWidgetBase], type[RectWidgetBase.StyleSheet]]
+
 @dataclass(slots=True)
 class RectWidgetBase(WidgetBase):
 	# ================ Contract Interface ================
 
 	def draw(self, screen: pygame.Surface):
-		draw.rect(screen, self.style.backgroundColor,
-		          makeRect(self.pos + ivec2(self.style.margin, self.style.margin),
-		                   self.dim - ivec2(self.style.margin * 2, self.style.margin * 2)), 0,
-		          border_radius = self.style.roundCornerRadius)
+		draw.rect(screen, self.styleSheet.backgroundColor,
+		          makeRect(self.pos + ivec2(self.styleSheet.margin, self.styleSheet.margin),
+		                   self.dim - ivec2(self.styleSheet.margin * 2, self.styleSheet.margin * 2)), 0,
+		          border_radius = self.styleSheet.roundCornerRadius)
 		super().draw(screen)
 		self.diff = False
 
-
 	# ================ Public Interface ================
 
-	def addWidget[T: RectWidgetBase](self, widget: T) -> T:
-		widget.pos += self.pos
-		super().addWidget(widget)
+	def addWidget[T: RectWidgetBase](self, widgetType: type[T], **args) -> T:
+		widget = super().addWidget(widgetType, **({
+			"theme": self.theme,
+			"styleSheet": self.theme[widgetType]
+		} | args))
 		return widget
 
 	def hide(self):
@@ -120,7 +126,7 @@ class RectWidgetBase(WidgetBase):
 
 	'''
 	After initialization, the geometry of the widget should not be modified by
-	the object itself, or mnaually. It should only be modified by the parent's
+	the object itself, or manually. It should only be modified by the parent's
 	layout manager.
 	'''
 
@@ -128,6 +134,11 @@ class RectWidgetBase(WidgetBase):
 	dim: ivec2 = field(default_factory=lambda: ivec2(0, 0)) # dimension
 
 	# ================ Styling ================
+	'''
+	Theme and StyleSheet should only be set in configure time, and remain constant in runtime.
+	The appearance is governed by the style sheet, determinded by the state;
+	The StyleSheet is default to the Theme. It can, however, be customised per widget instance.
+	'''
 
 	@dataclass(slots=True)
 	class StyleSheet:
@@ -135,10 +146,12 @@ class RectWidgetBase(WidgetBase):
 		roundCornerRadius: int = 0
 		margin: int = 0
 
-	style: StyleSheet = field(default_factory=StyleSheet)
+	theme: WidgetTheme | None = None
+	styleSheet: StyleSheet = field(default_factory=StyleSheet)
 
+	# deprecated
 	def setStyleSheet(self, cb: Callable[[StyleSheet], StyleSheet]):
-		self.style = cb(self.style)
+		self.styleSheet = cb(self.styleSheet)
 		self.diff = True
 
 	# ================ Event Handling ================
@@ -222,10 +235,9 @@ class RectWidgetHLayout(RectWidgetBase):
 		self.widgets[i].pos.x = x
 		self.widgets[i].dim.x = w
 	
-	def addWidget[T: RectWidgetBase](self, widget: T, layoutAttrib: LinearLayoutAttribute) -> T:
-		super().addWidget(widget)
+	def addWidget[T: RectWidgetBase](self, layoutAttrib: LinearLayoutAttribute, widgetType: type[T], **arg) -> T:
 		self.solver.addAttrib(layoutAttrib)
-		return widget
+		return super().addWidget(widgetType, **arg)
 
 	def activateLayout(self):
 		'''recursive'''
@@ -245,10 +257,9 @@ class RectWidgetVLayout(RectWidgetBase):
 		self.widgets[i].pos.y = y
 		self.widgets[i].dim.y = h
 	
-	def addWidget[T: RectWidgetBase](self, widget: T, layoutAttrib: LinearLayoutAttribute) -> T:
-		super().addWidget(widget)
+	def addWidget[T: RectWidgetBase](self, layoutAttrib: LinearLayoutAttribute, widgetType: type[T], **arg) -> T:
 		self.solver.addAttrib(layoutAttrib)
-		return widget
+		return super().addWidget(widgetType, **arg)
 
 	def activateLayout(self):
 		for w in self.widgets: w.dim.x = self.dim.x
@@ -309,14 +320,16 @@ class PushButtonWidget(RectWidgetBase):
 
 
 
+
 class WidgetEngine [T: RectWidgetBase]:
 	'''
 	Highest level wrapper of the widget system
 	'''
 
-	def __init__(self, windowDimension: ivec2, BaseWidgetType: type[T]):
+	def __init__(self, windowDimension: ivec2, BaseWidgetType: type[T], theme: WidgetTheme):
 		self.screen = self.screen = pygame.display.set_mode((windowDimension.x, windowDimension.y))
-		self.baseWidget = BaseWidgetType(dim = windowDimension)
+		self.baseWidget = BaseWidgetType(
+			dim=windowDimension, theme=theme, styleSheet = theme[BaseWidgetType])
 
 	def base(self) -> T:
 		return self.baseWidget
@@ -327,3 +340,5 @@ class WidgetEngine [T: RectWidgetBase]:
 	def update(self) -> bool:
 		self.baseWidget.update()
 		return InputHandler.handle(self.baseWidget)
+
+

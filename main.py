@@ -8,12 +8,24 @@ pygame.init()
 
 from dataclasses import replace
 
+theme: tx.WidgetTheme = {
+	tx.RectWidgetBase: tx.RectWidgetBase.StyleSheet(
+		backgroundColor=tx.MikuColorBegin, roundCornerRadius=20, margin=0),
+	tx.RectWidgetHLayout: tx.RectWidgetHLayout.StyleSheet(
+		backgroundColor=tx.MikuColorBegin, roundCornerRadius=20, margin=0),
+	tx.RectWidgetVLayout: tx.RectWidgetVLayout.StyleSheet(
+		backgroundColor=tx.MikuColorBegin, roundCornerRadius=20, margin=0),
+	tx.PushButtonWidget: tx.PushButtonWidget.StyleSheet(
+		backgroundColor=tx.Blue, roundCornerRadius=20, margin=10),
+}
 
-engine = tx.WidgetEngine(tx.ivec2(800, 600), tx.RectWidgetHLayout)
+
+
+engine = tx.WidgetEngine(tx.ivec2(800, 600), tx.RectWidgetHLayout, theme)
 base = engine.base()
-w1 = base.addWidget(tx.RectWidgetVLayout(), tx.LinearLayoutAttribute(proportion=0.5, absolute=True))
-w1.style.backgroundColor = tx.rgb.MikuColorEnd
-w1.style.roundCornerRadius = 20
+base.styleSheet = tx.RectWidgetHLayout.StyleSheet(backgroundColor=tx.Black)
+
+w1 = base.addWidget(tx.LinearLayoutAttribute(proportion=0.5, absolute=True), tx.RectWidgetVLayout)
 
 def onPush(button: tx.PushButtonWidget):
 	if (w2.visible()):
@@ -21,15 +33,10 @@ def onPush(button: tx.PushButtonWidget):
 	else: w2.show()
 	print("button pressed")
 
-b1 = w1.addWidget(tx.PushButtonWidget(onPress=onPush), tx.LinearLayoutAttribute(proportion=0.5, absolute=True))
-b1.setStyleSheet(lambda s: replace(s, backgroundColor = tx.Purple, margin = 10, roundCornerRadius = 20))
+b1 = w1.addWidget(tx.LinearLayoutAttribute(proportion=0.5, absolute=True), tx.PushButtonWidget, onPress=onPush)
 
-w2 = base.addWidget(tx.RectWidgetBase(), tx.LinearLayoutAttribute(proportion=2, absolute=False))
-w2.style.backgroundColor = tx.rgb.MikuColor
-w2.style.roundCornerRadius = 20
-w3 = base.addWidget(tx.RectWidgetBase(), tx.LinearLayoutAttribute())
-w3.style.backgroundColor = tx.rgb.Red
-w3.style.roundCornerRadius = 20
+w2 = base.addWidget(tx.LinearLayoutAttribute(proportion=2, absolute=False), tx.RectWidgetBase)
+w3 = base.addWidget(tx.LinearLayoutAttribute(), tx.RectWidgetBase)
 
 base.activateLayout()
 
