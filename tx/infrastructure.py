@@ -20,3 +20,5 @@ def tryCall(object, name: str, *args, **kwargs):
 	if (object is not None):
 		method = getattr(object, name)
 		if(callable(method)): return method(*args, **kwargs)
+
+type Color = tuple[int, int, int]

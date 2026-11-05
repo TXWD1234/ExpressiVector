@@ -17,6 +17,8 @@ theme: tx.WidgetTheme = {
 		backgroundColor=tx.MikuColorBegin, roundCornerRadius=20, margin=0),
 	tx.PushButtonWidget: tx.PushButtonWidget.StyleSheet(
 		backgroundColor=tx.Blue, roundCornerRadius=20, margin=10),
+	tx.ToggleWidgetBase: tx.ToggleWidgetBase.StyleSheet(
+		onColor=tx.Blue, offColor=tx.LightGray, nodeColor=tx.White)
 }
 
 
@@ -27,13 +29,15 @@ base.styleSheet = tx.RectWidgetHLayout.StyleSheet(backgroundColor=tx.Black)
 
 w1 = base.addWidget(tx.LinearLayoutAttribute(proportion=0.5, absolute=True), tx.RectWidgetVLayout)
 
-def onPush(button: tx.PushButtonWidget):
+def onPush():
 	if (w2.visible()):
 		w2.hide()
 	else: w2.show()
 	print("button pressed")
 
 b1 = w1.addWidget(tx.LinearLayoutAttribute(proportion=0.5, absolute=True), tx.PushButtonWidget, onPress=onPush)
+
+t1 = w1.addWidget(tx.LinearLayoutAttribute(), tx.ToggleWidgetBase)
 
 w2 = base.addWidget(tx.LinearLayoutAttribute(proportion=2, absolute=False), tx.RectWidgetBase)
 w3 = base.addWidget(tx.LinearLayoutAttribute(), tx.RectWidgetBase)

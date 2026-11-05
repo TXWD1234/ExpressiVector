@@ -8,6 +8,7 @@ from typing import Callable, Generic, TypeVar, Self
 from pygame import draw
 from dataclasses import dataclass, field, replace
 from collections import deque
+from enum import Enum, auto
 
 T = TypeVar('T')
 
@@ -147,8 +148,8 @@ class RectWidgetBase(WidgetBase):
 
 	@dataclass(slots=True)
 	class StyleSheet:
-		backgroundColor: tuple[int, int, int] = Black
-		hoverColor: tuple[int, int, int] = White
+		backgroundColor: Color = Black
+		hoverColor: Color = White
 		roundCornerRadius: int = 0
 		margin: int = 0
 
@@ -339,11 +340,9 @@ class PushButtonWidget(RectWidgetBase):
 	This class also serves as a demo of the Event Handling system
 	'''
 
-	onPress: Callable[[PushButtonWidget], None] = field(default_factory=lambda _: None)
+	onPress: Callable[[], None] = lambda: None
 
 	# ================ Contract Interface ================
-	
-
 
 	def handleEvent(self, event):
 		if (super().handleEvent(event)): return True # process sub widgets
@@ -351,7 +350,7 @@ class PushButtonWidget(RectWidgetBase):
 		# along with that, state is also modified
 		match (event.type):
 			case pygame.MOUSEBUTTONDOWN:
-				self.onPress(self)
+				self.onPress()
 			case _:	return False
 		return True
 
@@ -359,14 +358,65 @@ class PushButtonWidget(RectWidgetBase):
 	
 	# ================ Style ================
 
+@dataclass(slots=True)
+class ToggleWidgetBase(PushButtonWidget):
+	on: bool = False
+
+	def toggle(self):
+		self.on = not self.on
+		self.diff = True
+
+	def __post_init__(self):
+		self.onPress = self.toggle
+
+	# ================ Contract Interface ================
+
+	def draw(self, screen: pygame.Surface):
+		#draw.rect(screen, Red, (self.pos.x, self.pos.y, self.dim.x, self.dim.y))
+		xunit: int = self.dim.x / 4
+		yunit: int = self.dim.y / 2
+		color = self.styleSheet.onColor if self.on else self.styleSheet.offColor
+		draw.circle(screen, color, (self.pos.x + xunit, self.pos.y + yunit), xunit)
+		draw.circle(screen, color, (self.pos.x + xunit * 3, self.pos.y + yunit), xunit)
+		draw.rect(screen, color, (self.pos.x + xunit, self.pos.y, xunit * 2, yunit * 2))
+		draw.circle(screen, self.styleSheet.nodeColor,
+		            (self.pos.x + xunit * 3, self.pos.y + yunit) if self.on else (self.pos.x + xunit, self.pos.y + yunit),
+					xunit - self.styleSheet.nodePadding)
+		self.diff = False
+
+	# ================ Geometry ================
+
+	def activateLayout(self):
+		'''
+		Applying the constraint of strict 1 : 2 geometry
+		'''
+		unit = min(self.dim.x / 2, self.dim.y)
+		self.pos = ivec2(self.pos.x + self.dim.x / 2 - unit,
+		                 self.pos.y + self.dim.y / 2 - unit / 2)
+		self.dim = ivec2(unit * 2, unit)
+
+	# ================ Style ================
+
+	@dataclass(slots=True)
+	class StyleSheet:
+		onColor: Color = White
+		offColor: Color = Gray
+		nodeColor: Color = Black
+		nodePadding: int = 4
+
+	styleSheet: StyleSheet = field(default_factory=StyleSheet)
+
+@dataclass(slots=True)
+class SliderWidget:
+	value: float = 0.0 # Linearly Traveling between 0.0 and 1.0
 
 
 
+class GlobalState(Enum):
+	Normal = auto()
+	Dragging = auto()
 
-
-
-
-class WidgetEngine [T: RectWidgetBase]:
+class WidgetEngine[T: RectWidgetBase]:
 	'''
 	Highest level wrapper of the widget system
 	'''
@@ -375,6 +425,8 @@ class WidgetEngine [T: RectWidgetBase]:
 		self.screen = self.screen = pygame.display.set_mode((windowDimension.x, windowDimension.y))
 		self.baseWidget = BaseWidgetType(
 			dim=windowDimension, theme=theme, styleSheet = theme[BaseWidgetType])
+		
+	# ================ Contract Interface ================
 
 	def base(self) -> T:
 		return self.baseWidget
@@ -386,4 +438,8 @@ class WidgetEngine [T: RectWidgetBase]:
 		self.baseWidget.update()
 		return InputHandler.handle(self.baseWidget)
 
+	# ================ Global ================
 
+	@dataclass(slots=True)
+	class Global:
+		state = GlobalState.Normal
