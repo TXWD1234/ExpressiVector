@@ -15,3 +15,8 @@ class Ptr(Generic[T]):
 		if args:
 			self.v = args[0]
 		return self.v
+
+def tryCall(object, name: str, *args, **kwargs):
+	if (object is not None):
+		method = getattr(object, name)
+		if(callable(method)): return method(*args, **kwargs)

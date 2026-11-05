@@ -11,6 +11,10 @@ from collections import deque
 
 T = TypeVar('T')
 
+class Events:
+	MouseEnter: int = pygame.event.custom_type()
+	MouseLeave: int = pygame.event.custom_type()
+
 # ################ Widget Basics ################
 '''
 Since the damn Python don't have templates and is weakly and dynamically
@@ -91,7 +95,8 @@ class RectWidgetBase(WidgetBase):
 	# ================ Contract Interface ================
 
 	def draw(self, screen: pygame.Surface):
-		draw.rect(screen, self.styleSheet.backgroundColor,
+		draw.rect(screen,
+		          self.styleSheet.hoverColor if self.state.hover else self.styleSheet.backgroundColor,
 		          makeRect(self.pos + ivec2(self.styleSheet.margin, self.styleSheet.margin),
 		                   self.dim - ivec2(self.styleSheet.margin * 2, self.styleSheet.margin * 2)), 0,
 		          border_radius = self.styleSheet.roundCornerRadius)
@@ -143,6 +148,7 @@ class RectWidgetBase(WidgetBase):
 	@dataclass(slots=True)
 	class StyleSheet:
 		backgroundColor: tuple[int, int, int] = Black
+		hoverColor: tuple[int, int, int] = White
 		roundCornerRadius: int = 0
 		margin: int = 0
 
@@ -164,12 +170,21 @@ class RectWidgetBase(WidgetBase):
 	- Window Events: Handled directly here
 	'''
 
+	@dataclass(slots=True)
+	class State:
+		hover: bool = False
+	state: State = field(default_factory=State)
+
+	def subWidgetFindWithin_impl(self, pos: ivec2) -> RectWidgetBase:
+		for w in self.widgets:
+			# if (issubclass(type(w), RectWidgetBase) and
+			# 	inRange(makeRect(w.pos, w.dim), pos)): return w
+			if (inRange(makeRect(w.pos, w.dim), pos)): return w
+		return self
+
 	def subWidgetHandleEvent_impl(self, event: pygame.Event, pos: ivec2) -> bool:
 		if (len(self.widgets) == 0): return False
-		for w in self.widgets:
-			if (issubclass(type(w), RectWidgetBase) and
-			    inRange(makeRect(w.pos, w.dim), pos)):
-				return w.handleEvent(event)
+		if ((w := self.subWidgetFindWithin_impl(pos)) is not self): return w.handleEvent(event)
 		return False
 
 	def handleEvent(self, event: pygame.Event) -> bool:
@@ -178,7 +193,30 @@ class RectWidgetBase(WidgetBase):
 				return self.subWidgetHandleEvent_impl(
 					event, ivec2(event.pos[0], event.pos[1]))
 			case pygame.MOUSEMOTION:
-				
+				# When received a mouse motion event, assume it's all-within
+				toPos = ivec2(event.pos[0], event.pos[1])
+				fromPos = ivec2(event.pos[0] - event.rel[0], event.pos[1] - event.rel[1])
+				toW = self.subWidgetFindWithin_impl(toPos)
+				fromW = self.subWidgetFindWithin_impl(fromPos)
+				if (fromW is toW):
+					if (fromW is not self): fromW.handleEvent(event)
+				else:
+					if (fromW is not self): fromW.handleEvent(pygame.Event(Events.MouseLeave, {"pos": fromPos, "buttons": event.buttons}))
+					if (toW   is not self): toW  .handleEvent(pygame.Event(Events.MouseEnter, {"pos": toPos,   "buttons": event.buttons}))
+				return False
+			case Events.MouseEnter:
+				if ((sub := self.subWidgetFindWithin_impl(event.pos)) is not self):
+					sub.handleEvent(event)
+				print("HoverEnter")
+				self.state.hover = True
+				self.diff = True
+				return False
+			case Events.MouseLeave:
+				if ((sub := self.subWidgetFindWithin_impl(event.pos)) is not self):
+					sub.handleEvent(event)
+				print("HoverLeave")
+				self.state.hover = False
+				self.diff = True
 				return False
 			case pygame.KEYDOWN | pygame.KEYUP:
 				return False
@@ -284,8 +322,11 @@ class InputHandler:
 		Return whether the program will continue running
 		'''
 		for event in pygame.event.get():
-			if (event.type == pygame.QUIT): return False
-			baseWidget.handleEvent(event)
+			# Preliminary parsing
+			match (event.type):
+				case pygame.QUIT: return False
+				case _:
+					baseWidget.handleEvent(event)
 			
 		return True
 
@@ -302,17 +343,21 @@ class PushButtonWidget(RectWidgetBase):
 
 	# ================ Contract Interface ================
 	
+
+
 	def handleEvent(self, event):
 		if (super().handleEvent(event)): return True # process sub widgets
 		# sub widgets not handled - attempt handling for this widget
-		if (event.type == pygame.MOUSEBUTTONDOWN):
-			self.onPress(self)
-			return True
-		return False
+		# along with that, state is also modified
+		match (event.type):
+			case pygame.MOUSEBUTTONDOWN:
+				self.onPress(self)
+			case _:	return False
+		return True
 
 	# ================ Public Interface ================
 	
-	
+	# ================ Style ================
 
 
 
