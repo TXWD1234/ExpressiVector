@@ -111,7 +111,8 @@ class RectWidgetBase(WidgetBase):
 
 	def draw(self, screen: pygame.Surface):
 		draw.rect(screen,
-		          self.styleSheet.hoverColor if self.state.hover else self.styleSheet.backgroundColor,
+		          self.state.colorOverride if self.state.colorOverride is not None else
+				  self.styleSheet.hoverColor if self.state.hover else self.styleSheet.backgroundColor,
 		          makeRect(self.pos + ivec2(self.styleSheet.margin, self.styleSheet.margin),
 		                   self.dim - ivec2(self.styleSheet.margin * 2, self.styleSheet.margin * 2)), 0,
 		          border_radius = self.styleSheet.roundCornerRadius)
@@ -158,6 +159,14 @@ class RectWidgetBase(WidgetBase):
 	pos: ivec2 = field(default_factory=lambda: ivec2(0, 0)) # position (topLeft)
 	dim: ivec2 = field(default_factory=lambda: ivec2(0, 0)) # dimension
 
+	# ================ State ================
+
+	@dataclass(slots=True)
+	class State:
+		hover: bool = False
+		colorOverride: Color | None = None
+	state: State = field(default_factory=State)
+
 	# ================ Styling ================
 	'''
 	Theme and StyleSheet should only be set in configure time, and remain constant in runtime.
@@ -167,8 +176,8 @@ class RectWidgetBase(WidgetBase):
 
 	@dataclass(slots=True)
 	class StyleSheet:
-		backgroundColor: Color = Black
-		hoverColor: Color = White
+		backgroundColor: Color = Magenta
+		hoverColor: Color = Magenta
 		roundCornerRadius: int = 0
 		margin: int = 0
 
@@ -189,11 +198,6 @@ class RectWidgetBase(WidgetBase):
 	                   further to the global keybind manager
 	- Window Events: Handled directly here
 	'''
-
-	@dataclass(slots=True)
-	class State:
-		hover: bool = False
-	state: State = field(default_factory=State)
 
 	def subWidgetFindWithin_impl(self, pos: ivec2) -> RectWidgetBase:
 		for w in self.widgets:
@@ -416,9 +420,9 @@ class ToggleWidget(PushButtonWidget):
 
 	@dataclass(slots=True)
 	class StyleSheet:
-		onColor: Color = White
-		offColor: Color = Gray
-		nodeColor: Color = Black
+		onColor: Color = Magenta
+		offColor: Color = Magenta
+		nodeColor: Color = Magenta
 		nodePadding: int = 4
 
 	styleSheet: StyleSheet = field(default_factory=StyleSheet)
@@ -435,16 +439,20 @@ class DragWidget(RectWidgetBase):
 	# ================ Contract Interface ================
 
 	def handleEvent(self, event):
+		if (not self.dragging and super().handleEvent(event)): return True
 		match (event.type):
 			case pygame.MOUSEBUTTONDOWN:
 				self.uniform.state = GlobalState.Focused
 				self.uniform.focusWidget = self
+				self.state.colorOverride = self.styleSheet.dragColor
 				self.dragging = True
 				return True
 			case pygame.MOUSEBUTTONUP:
 				self.uniform.state = GlobalState.Normal
 				self.uniform.focusWidget = None
+				self.state.colorOverride = None
 				self.dragging = False
+				self.diff = True
 				return True
 			case pygame.MOUSEMOTION:
 				if (self.dragging):
@@ -455,6 +463,13 @@ class DragWidget(RectWidgetBase):
 					return True
 			case _:
 				return False
+
+	# ================ Style ================
+
+	@dataclass(slots=True)
+	class StyleSheet(RectWidgetBase.StyleSheet):
+		dragColor: Color = Magenta
+	styleSheet: StyleSheet = field(default_factory=StyleSheet)
 
 @dataclass(slots=True)
 class SliderHWidget(RectWidgetBase):
@@ -484,6 +499,9 @@ class SliderHWidget(RectWidgetBase):
 			dim=ivec2(self.dim.x * self.draggerPortion, self.dim.y),
 			onDrag=self.handleDrag_impl
 		)
+		self.dragger.styleSheet.backgroundColor = self.styleSheet.draggerNormalColor
+		self.dragger.styleSheet.hoverColor = self.styleSheet.draggerHoverColor
+		self.dragger.styleSheet.dragColor = self.styleSheet.draggerDragColor
 
 	# ================ Style ================
 
@@ -491,14 +509,16 @@ class SliderHWidget(RectWidgetBase):
 
 	@dataclass(slots=True)
 	class StyleSheet:
-		backgroundColor: Color = Black
-		hoverColor: Color = Black
-		draggerNormalColor: Color = Black
-		draggerHoverColor: Color = Black
-		draggerDragColor: Color = Black
+		backgroundColor: Color = Magenta
+		hoverColor: Color = Magenta
+		draggerNormalColor: Color = Magenta
+		draggerHoverColor: Color = Magenta
+		draggerDragColor: Color = Magenta
 		draggerMargin: float = 0.0
 		roundCornerRadius: int = 0
 		margin: int = 0
+	styleSheet: StyleSheet = field(default_factory=StyleSheet)
+
 	
 
 

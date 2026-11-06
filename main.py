@@ -22,8 +22,8 @@ theme: tx.WidgetTheme = {
 	tx.DragWidget: tx.DragWidget.StyleSheet(
 		backgroundColor=tx.Blue, roundCornerRadius=20, margin=10),
 	tx.SliderHWidget: tx.SliderHWidget.StyleSheet(
-		backgroundColor=tx.MikuColorBegin, hoverColor=tx.Gray,
-		draggerNormalColor=tx.LightBlue, draggerHoverColor=tx.SkyBlue, draggerDragColor=tx.Blue,
+		backgroundColor=tx.MikuColorBegin, hoverColor=tx.White,
+		draggerNormalColor=tx.LightBlue, draggerHoverColor=tx.Red, draggerDragColor=tx.Blue,
 		draggerMargin=0.1)
 }
 
