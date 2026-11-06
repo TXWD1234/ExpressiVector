@@ -17,8 +17,14 @@ theme: tx.WidgetTheme = {
 		backgroundColor=tx.MikuColorBegin, roundCornerRadius=20, margin=0),
 	tx.PushButtonWidget: tx.PushButtonWidget.StyleSheet(
 		backgroundColor=tx.Blue, roundCornerRadius=20, margin=10),
-	tx.ToggleWidgetBase: tx.ToggleWidgetBase.StyleSheet(
-		onColor=tx.Blue, offColor=tx.LightGray, nodeColor=tx.White)
+	tx.ToggleWidget: tx.ToggleWidget.StyleSheet(
+		onColor=tx.Blue, offColor=tx.LightGray, nodeColor=tx.White),
+	tx.DragWidget: tx.DragWidget.StyleSheet(
+		backgroundColor=tx.Blue, roundCornerRadius=20, margin=10),
+	tx.SliderHWidget: tx.SliderHWidget.StyleSheet(
+		backgroundColor=tx.MikuColorBegin, hoverColor=tx.Gray,
+		draggerNormalColor=tx.LightBlue, draggerHoverColor=tx.SkyBlue, draggerDragColor=tx.Blue,
+		draggerMargin=0.1)
 }
 
 
@@ -37,10 +43,13 @@ def onPush():
 
 b1 = w1.addWidget(tx.LinearLayoutAttribute(proportion=0.5, absolute=True), tx.PushButtonWidget, onPress=onPush)
 
-t1 = w1.addWidget(tx.LinearLayoutAttribute(), tx.ToggleWidgetBase)
+def onSlide(slider: tx.SliderHWidget):
+	print(slider.value)
+
+s1 = w1.addWidget(tx.LinearLayoutAttribute(), tx.SliderHWidget, onValueChange=onSlide)
 
 w2 = base.addWidget(tx.LinearLayoutAttribute(proportion=2, absolute=False), tx.RectWidgetBase)
-w3 = base.addWidget(tx.LinearLayoutAttribute(), tx.RectWidgetBase)
+w3 = base.addWidget(tx.LinearLayoutAttribute(), tx.DragWidget)
 
 base.activateLayout()
 

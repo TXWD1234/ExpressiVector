@@ -4,7 +4,7 @@
 from .geometry import *
 from .rgb import *
 from .infrastructure import *
-from typing import Callable, Generic, TypeVar, Self
+from typing import Callable, Generic, TypeVar, Self, Any
 from pygame import draw
 from dataclasses import dataclass, field, replace
 from collections import deque
@@ -15,6 +15,17 @@ T = TypeVar('T')
 class Events:
 	MouseEnter: int = pygame.event.custom_type()
 	MouseLeave: int = pygame.event.custom_type()
+
+# ################ Globals ################
+
+class GlobalState(Enum):
+	Normal = auto()
+	Focused = auto()
+
+@dataclass(slots=True)
+class Global:
+	state: GlobalState = GlobalState.Normal
+	focusWidget: Any | None = None
 
 # ################ Widget Basics ################
 '''
@@ -48,9 +59,11 @@ class WidgetBase:
 	# ================ Object Lifetime ================
 
 	widgets: list[Self] = field(default_factory=list)
-	
+
 	parent: WidgetBase | None = None
 	id: int = 0
+
+	uniform: Global | None = None
 
 	# ================ Contract Interface ================
 
@@ -59,7 +72,7 @@ class WidgetBase:
 			w.update()
 
 	def render(self, screen: pygame.Surface):
-		if (self.diff):
+		if (self.diff or self.uniform.state == GlobalState.Focused):
 			self.draw(screen)
 		else:
 			for w in self.widgets:
@@ -77,7 +90,8 @@ class WidgetBase:
 	def addWidget[T: WidgetBase](self, widgetType: type[T], **args) -> T:
 		widget = widgetType(**(args | {
 				"parent": self,
-				"id": len(self.widgets)
+				"id": len(self.widgets),
+				"uniform": self.uniform
 			}))
 		self.widgets.append(widget)
 		return widget
@@ -103,6 +117,11 @@ class RectWidgetBase(WidgetBase):
 		          border_radius = self.styleSheet.roundCornerRadius)
 		super().draw(screen)
 		self.diff = False
+
+	def activateLayout(self):
+		#for w in self.widgets: tryCall(w, "activateLayout")
+		for w in self.widgets: w.activateLayout()
+		self.diff = True
 
 	# ================ Public Interface ================
 
@@ -282,10 +301,7 @@ class RectWidgetHLayout(RectWidgetBase):
 		'''recursive'''
 		for w in self.widgets: w.dim.y = self.dim.y
 		self.solver.solve(self.pos.x, self.dim.x, self.modifier_impl)
-		for w in self.widgets:
-			if (hasattr(w, 'activateLayout') and callable(w.activateLayout)):
-				w.activateLayout()
-		self.diff = True
+		super().activateLayout()
 
 # Vertical Layout
 @dataclass(slots = True)
@@ -303,10 +319,8 @@ class RectWidgetVLayout(RectWidgetBase):
 	def activateLayout(self):
 		for w in self.widgets: w.dim.x = self.dim.x
 		self.solver.solve(self.pos.y, self.dim.y, self.modifier_impl)
-		for w in self.widgets:
-			if (hasattr(w, 'activateLayout') and callable(w.activateLayout)):
-				w.activateLayout()
-		self.diff = True
+		super().activateLayout()
+
 
 
 
@@ -318,7 +332,7 @@ class InputHandler:
 	# ================ Public Interface ================
 	
 	@staticmethod
-	def handle(baseWidget: RectWidgetBase) -> bool:
+	def handle(baseWidget: RectWidgetBase, uniform: Global) -> bool:
 		'''
 		Return whether the program will continue running
 		'''
@@ -327,7 +341,10 @@ class InputHandler:
 			match (event.type):
 				case pygame.QUIT: return False
 				case _:
-					baseWidget.handleEvent(event)
+					if (uniform.state == GlobalState.Normal):
+						baseWidget.handleEvent(event)
+					if (uniform.state == GlobalState.Focused):
+						tryCall(uniform.focusWidget, "handleEvent", event)
 			
 		return True
 
@@ -340,7 +357,7 @@ class PushButtonWidget(RectWidgetBase):
 	This class also serves as a demo of the Event Handling system
 	'''
 
-	onPress: Callable[[], None] = lambda: None
+	onPress: Callable[[], None] | Callable[[PushButtonWidget], None] = lambda: None
 
 	# ================ Contract Interface ================
 
@@ -359,7 +376,7 @@ class PushButtonWidget(RectWidgetBase):
 	# ================ Style ================
 
 @dataclass(slots=True)
-class ToggleWidgetBase(PushButtonWidget):
+class ToggleWidget(PushButtonWidget):
 	on: bool = False
 
 	def toggle(self):
@@ -407,14 +424,83 @@ class ToggleWidgetBase(PushButtonWidget):
 	styleSheet: StyleSheet = field(default_factory=StyleSheet)
 
 @dataclass(slots=True)
-class SliderWidget:
+class DragWidget(RectWidgetBase):
+	onDrag: Callable[[], None] | Callable[[DragWidget], None] = lambda: None
+
+	# ================ State ================
+
+	dragging: bool = False
+	prevPos: ivec2 = field(default_factory=lambda: ivec2(0, 0))
+
+	# ================ Contract Interface ================
+
+	def handleEvent(self, event):
+		match (event.type):
+			case pygame.MOUSEBUTTONDOWN:
+				self.uniform.state = GlobalState.Focused
+				self.uniform.focusWidget = self
+				self.dragging = True
+				return True
+			case pygame.MOUSEBUTTONUP:
+				self.uniform.state = GlobalState.Normal
+				self.uniform.focusWidget = None
+				self.dragging = False
+				return True
+			case pygame.MOUSEMOTION:
+				if (self.dragging):
+					self.prevPos = self.pos
+					self.pos += ivec2(event.rel[0], event.rel[1])
+					self.diff = True
+					optionalCall(self.onDrag, self)
+					return True
+			case _:
+				return False
+
+@dataclass(slots=True)
+class SliderHWidget(RectWidgetBase):
 	value: float = 0.0 # Linearly Traveling between 0.0 and 1.0
+	onValueChange: Callable[[], None] | Callable[[SliderHWidget], None] = lambda: None
 
+	dragger: DragWidget | None = None
 
+	def handleDrag_impl(self):
+		self.dragger.pos.y = self.pos.y
+		self.dragger.pos.x = clamp(
+			self.dragger.pos.x, self.pos.x,
+			self.pos.x + self.dim.x - self.dragger.dim.x)
 
-class GlobalState(Enum):
-	Normal = auto()
-	Dragging = auto()
+		self.value = (self.dragger.pos.x - self.pos.x) / (self.dim.x - self.dragger.dim.x)
+		self.diff = True
+
+		optionalCall(self.onValueChange, self)
+
+	# ================ Contract Interface ================
+
+	def activateLayout(self):
+		if (self.dragger is not None): return
+		self.dragger = self.addWidget(
+			DragWidget,
+			pos=ivec2(self.pos.x, self.pos.y),
+			dim=ivec2(self.dim.x * self.draggerPortion, self.dim.y),
+			onDrag=self.handleDrag_impl
+		)
+
+	# ================ Style ================
+
+	draggerPortion: float = 0.1
+
+	@dataclass(slots=True)
+	class StyleSheet:
+		backgroundColor: Color = Black
+		hoverColor: Color = Black
+		draggerNormalColor: Color = Black
+		draggerHoverColor: Color = Black
+		draggerDragColor: Color = Black
+		draggerMargin: float = 0.0
+		roundCornerRadius: int = 0
+		margin: int = 0
+	
+
 
 class WidgetEngine[T: RectWidgetBase]:
 	'''
@@ -424,6 +510,7 @@ class WidgetEngine[T: RectWidgetBase]:
 	def __init__(self, windowDimension: ivec2, BaseWidgetType: type[T], theme: WidgetTheme):
 		self.screen = self.screen = pygame.display.set_mode((windowDimension.x, windowDimension.y))
 		self.baseWidget = BaseWidgetType(
+			uniform=self.uniform,
 			dim=windowDimension, theme=theme, styleSheet = theme[BaseWidgetType])
 		
 	# ================ Contract Interface ================
@@ -436,10 +523,8 @@ class WidgetEngine[T: RectWidgetBase]:
 
 	def update(self) -> bool:
 		self.baseWidget.update()
-		return InputHandler.handle(self.baseWidget)
+		return InputHandler.handle(self.baseWidget, self.uniform)
 
 	# ================ Global ================
 
-	@dataclass(slots=True)
-	class Global:
-		state = GlobalState.Normal
+	uniform: Global = Global()
