@@ -16,6 +16,19 @@ class Events:
 	MouseEnter: int = pygame.event.custom_type()
 	MouseLeave: int = pygame.event.custom_type()
 
+# ################ Font ################
+
+@dataclass(slots=True)
+class FontManager:
+	data: dict[int, pygame.Font] = field(default_factory=dict[int, pygame.Font])
+
+	def addFont(self, fontSize: int):
+		self.data[fontSize] = pygame.font.SysFont(None, fontSize)
+
+	def font(self, fontSize: int) -> pygame.Font:
+		if (fontSize not in self.data): self.addFont(fontSize)
+		return self.data[fontSize]
+
 # ################ Globals ################
 
 class GlobalState(Enum):
@@ -26,6 +39,7 @@ class GlobalState(Enum):
 class Global:
 	state: GlobalState = GlobalState.Normal
 	focusWidget: Any | None = None
+	font: FontManager = field(default_factory=FontManager)
 
 # ################ Widget Basics ################
 '''
@@ -481,6 +495,12 @@ class SliderWidgetBase(RectWidgetBase):
 
 	dragger: DragWidget | None = None
 
+	def setValue(self, value: float):
+		self.value = value
+		pos = self.pos[self.Axis] + (self.dim[self.Axis] - self.dragger.dim[self.Axis]) * value
+		self.dragger.pos[self.Axis] = pos
+		self.diff = True
+
 	def handleDrag_impl(self):
 		self.dragger.pos[not self.Axis] = self.pos[not self.Axis]
 		self.dragger.pos[self.Axis] = clamp(
@@ -494,6 +514,14 @@ class SliderWidgetBase(RectWidgetBase):
 		optionalCall(self.onValueChange, self)
 
 	# ================ Contract Interface ================
+
+	def handleEvent(self, event):
+		if (super().handleEvent(event)): return True
+		match (event.type):
+			case pygame.MOUSEBUTTONDOWN:
+				self.dragger.pos[self.Axis] = event.pos[self.Axis] - self.dragger.dim[self.Axis] / 2
+				self.dragger.handleEvent(event)
+				self.diff = True
 
 	def activateLayout(self):
 		if (self.dragger is not None): return
@@ -533,6 +561,15 @@ class SliderHWidget(SliderWidgetBase):
 @dataclass(slots=True)
 class SliderVWidget(SliderWidgetBase):
     Axis: ClassVar[int] = 1
+
+
+# ################ Overlay ################
+'''
+Overlay are display objects which are attached to widgets as their visual manifest.
+'''
+
+
+
 
 
 class WidgetEngine[T: RectWidgetBase]:

@@ -40,10 +40,7 @@ base.styleSheet = tx.RectWidgetHLayout.StyleSheet(backgroundColor=tx.Black)
 w1 = base.addWidget(tx.LinearLayoutAttribute(proportion=0.5, absolute=True), tx.RectWidgetVLayout)
 
 def onPush():
-	if (w2.visible()):
-		w2.hide()
-	else: w2.show()
-	print("button pressed")
+	s1.setValue(0.0)
 
 b1 = w1.addWidget(tx.LinearLayoutAttribute(proportion=0.5, absolute=True), tx.PushButtonWidget, onPress=onPush)
 
