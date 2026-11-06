@@ -18,13 +18,17 @@ theme: tx.WidgetTheme = {
 	tx.PushButtonWidget: tx.PushButtonWidget.StyleSheet(
 		backgroundColor=tx.Blue, roundCornerRadius=20, margin=10),
 	tx.ToggleWidget: tx.ToggleWidget.StyleSheet(
-		onColor=tx.Blue, offColor=tx.LightGray, nodeColor=tx.White),
+		onColor=tx.Blue, offColor=tx.LightGray, nodeColor=tx.White, nodePadding=4),
 	tx.DragWidget: tx.DragWidget.StyleSheet(
 		backgroundColor=tx.Blue, roundCornerRadius=20, margin=10),
-	tx.SliderHWidget: tx.SliderHWidget.StyleSheet(
+	tx.SliderHWidget: tx.SliderWidgetBase.StyleSheet(
 		backgroundColor=tx.MikuColorBegin, hoverColor=tx.White,
 		draggerNormalColor=tx.LightBlue, draggerHoverColor=tx.Red, draggerDragColor=tx.Blue,
-		draggerMargin=0.1)
+		draggerMargin=4, roundCornerRadius=20, margin=10),
+	tx.SliderVWidget: tx.SliderWidgetBase.StyleSheet(
+		backgroundColor=tx.MikuColorBegin, hoverColor=tx.White,
+		draggerNormalColor=tx.LightBlue, draggerHoverColor=tx.Red, draggerDragColor=tx.Blue,
+		draggerMargin=4, roundCornerRadius=20, margin=10),
 }
 
 

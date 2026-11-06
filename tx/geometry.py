@@ -179,6 +179,15 @@ class ivec2:
 	def __str__(self):
 		return f"( {self.x}, {self.y} )"
 
+	# allowing index based access
+
+	def __getitem__(self, idx: int) -> int:
+		return self.y if idx else self.x
+		
+	def __setitem__(self, idx: int, val: int):
+		if idx: self.y = val
+		else: self.x = val
+
 
 def toIvec2(in_vec: vec2) -> ivec2:
 	return ivec2(math.floor(in_vec.x()), math.floor(in_vec.y()))

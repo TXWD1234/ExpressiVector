@@ -4,7 +4,7 @@
 from .geometry import *
 from .rgb import *
 from .infrastructure import *
-from typing import Callable, Generic, TypeVar, Self, Any
+from typing import Callable, Generic, TypeVar, Self, Any, ClassVar
 from pygame import draw
 from dataclasses import dataclass, field, replace
 from collections import deque
@@ -129,7 +129,7 @@ class RectWidgetBase(WidgetBase):
 	def addWidget[T: RectWidgetBase](self, widgetType: type[T], **args) -> T:
 		widget = super().addWidget(widgetType, **({
 			"theme": self.theme,
-			"styleSheet": self.theme[widgetType]
+			"styleSheet": replace(self.theme[widgetType])
 		} | args))
 		return widget
 
@@ -429,7 +429,7 @@ class ToggleWidget(PushButtonWidget):
 
 @dataclass(slots=True)
 class DragWidget(RectWidgetBase):
-	onDrag: Callable[[], None] | Callable[[DragWidget], None] = lambda: None
+	onDrag: Callable[[], None] | Callable[[Self], None] = lambda: None
 
 	# ================ State ================
 
@@ -452,6 +452,7 @@ class DragWidget(RectWidgetBase):
 				self.uniform.focusWidget = None
 				self.state.colorOverride = None
 				self.dragging = False
+				self.state.hover = inRange(makeRect(self.pos, self.dim), ivec2(event.pos[0], event.pos[1]))
 				self.diff = True
 				return True
 			case pygame.MOUSEMOTION:
@@ -472,19 +473,22 @@ class DragWidget(RectWidgetBase):
 	styleSheet: StyleSheet = field(default_factory=StyleSheet)
 
 @dataclass(slots=True)
-class SliderHWidget(RectWidgetBase):
-	value: float = 0.0 # Linearly Traveling between 0.0 and 1.0
-	onValueChange: Callable[[], None] | Callable[[SliderHWidget], None] = lambda: None
+class SliderWidgetBase(RectWidgetBase):
+	Axis: ClassVar[int] # 0 for Horizontal, 1 for Vertical
+	
+	value: float = 0.0 # Linearly traveling between 0.0 and 1.0
+	onValueChange: Callable[[], None] | Callable[[Self], None] = lambda: None
 
 	dragger: DragWidget | None = None
 
 	def handleDrag_impl(self):
-		self.dragger.pos.y = self.pos.y
-		self.dragger.pos.x = clamp(
-			self.dragger.pos.x, self.pos.x,
-			self.pos.x + self.dim.x - self.dragger.dim.x)
+		self.dragger.pos[not self.Axis] = self.pos[not self.Axis]
+		self.dragger.pos[self.Axis] = clamp(
+			self.dragger.pos[self.Axis], self.pos[self.Axis],
+			self.pos[self.Axis] + self.dim[self.Axis] - self.dragger.dim[self.Axis])
 
-		self.value = (self.dragger.pos.x - self.pos.x) / (self.dim.x - self.dragger.dim.x)
+		self.value = (self.dragger.pos[self.Axis] - self.pos[self.Axis]) / (
+			self.dim[self.Axis] - self.dragger.dim[self.Axis])
 		self.diff = True
 
 		optionalCall(self.onValueChange, self)
@@ -493,15 +497,18 @@ class SliderHWidget(RectWidgetBase):
 
 	def activateLayout(self):
 		if (self.dragger is not None): return
+		margin: int = self.styleSheet.draggerMargin + self.styleSheet.margin
 		self.dragger = self.addWidget(
 			DragWidget,
 			pos=ivec2(self.pos.x, self.pos.y),
-			dim=ivec2(self.dim.x * self.draggerPortion, self.dim.y),
+			dim=ivec2(self.dim.x * (self.draggerPortion if not self.Axis else 1) + (not self.Axis) * margin * 2,
+			          self.dim.y * (self.draggerPortion if self.Axis else 1) + (self.Axis) * margin * 2),
 			onDrag=self.handleDrag_impl
 		)
 		self.dragger.styleSheet.backgroundColor = self.styleSheet.draggerNormalColor
 		self.dragger.styleSheet.hoverColor = self.styleSheet.draggerHoverColor
 		self.dragger.styleSheet.dragColor = self.styleSheet.draggerDragColor
+		self.dragger.styleSheet.margin = margin
 
 	# ================ Style ================
 
@@ -519,7 +526,13 @@ class SliderHWidget(RectWidgetBase):
 		margin: int = 0
 	styleSheet: StyleSheet = field(default_factory=StyleSheet)
 
-	
+@dataclass(slots=True)
+class SliderHWidget(SliderWidgetBase):
+    Axis: ClassVar[int] = 0
+
+@dataclass(slots=True)
+class SliderVWidget(SliderWidgetBase):
+    Axis: ClassVar[int] = 1
 
 
 class WidgetEngine[T: RectWidgetBase]:
@@ -531,7 +544,7 @@ class WidgetEngine[T: RectWidgetBase]:
 		self.screen = self.screen = pygame.display.set_mode((windowDimension.x, windowDimension.y))
 		self.baseWidget = BaseWidgetType(
 			uniform=self.uniform,
-			dim=windowDimension, theme=theme, styleSheet = theme[BaseWidgetType])
+			dim=windowDimension, theme=theme, styleSheet = replace(theme[BaseWidgetType]))
 		
 	# ================ Contract Interface ================
 
