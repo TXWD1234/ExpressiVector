@@ -105,6 +105,13 @@ class vec2:
 class ivec2:
 	x: int
 	y: int
+
+	@staticmethod
+	def fromTuple(v: tuple[int, int]) -> ivec2:
+		return ivec2(v[0], v[1])
+
+	def toTuple(self) -> tuple[int, int]:
+		return (self.x, self.y)
 	
 	def __init__(self, x: int = 0, y: int = None):
 		self.x = int(x)
@@ -151,8 +158,8 @@ class ivec2:
 	def __gt__(self, other: 'ivec2'):
 		return (self.x**2 + self.y**2) > (other.x**2 + other.y**2)
 
-	def __mul__(self, in_val: float) -> vec2:
-		return vec2(self.x * in_val, self.y * in_val)
+	def __mul__(self, in_val: int) -> ivec2:
+		return ivec2(self.x * in_val, self.y * in_val)
 
 	def valid(self, edge: int) -> bool:
 		return 0 <= self.x < edge and 0 <= self.y < edge

@@ -16,6 +16,8 @@ class Events:
 	MouseEnter: int = pygame.event.custom_type()
 	MouseLeave: int = pygame.event.custom_type()
 
+DefaultColor = Magenta
+
 # ################ Font ################
 
 @dataclass(slots=True)
@@ -25,6 +27,7 @@ class FontManager:
 	def addFont(self, fontSize: int):
 		self.data[fontSize] = pygame.font.SysFont(None, fontSize)
 
+	# supports lazy loading
 	def font(self, fontSize: int) -> pygame.Font:
 		if (fontSize not in self.data): self.addFont(fontSize)
 		return self.data[fontSize]
@@ -86,7 +89,7 @@ class WidgetBase:
 			w.update()
 
 	def render(self, screen: pygame.Surface):
-		if (self.diff or self.uniform.state == GlobalState.Focused):
+		if (self.diff or (self.overlay is not None and self.overlay.diff)):
 			self.draw(screen)
 		else:
 			for w in self.widgets:
@@ -110,14 +113,14 @@ class WidgetBase:
 		self.widgets.append(widget)
 		return widget
 
+	# deprecated
 	def widget(self, index: int):
 		return self.widgets[index]
 
 	# ================ State ================
 
 	diff: bool = True
-
-type WidgetTheme = dict[type[RectWidgetBase], type[RectWidgetBase.StyleSheet]]
+	overlay: OverlayBase | None = None
 
 @dataclass(slots=True)
 class RectWidgetBase(WidgetBase):
@@ -130,6 +133,7 @@ class RectWidgetBase(WidgetBase):
 		          makeRect(self.pos + ivec2(self.styleSheet.margin, self.styleSheet.margin),
 		                   self.dim - ivec2(self.styleSheet.margin * 2, self.styleSheet.margin * 2)), 0,
 		          border_radius = self.styleSheet.roundCornerRadius)
+		tryCall(self.overlay, "draw", screen, self)
 		super().draw(screen)
 		self.diff = False
 
@@ -190,8 +194,8 @@ class RectWidgetBase(WidgetBase):
 
 	@dataclass(slots=True)
 	class StyleSheet:
-		backgroundColor: Color = Magenta
-		hoverColor: Color = Magenta
+		backgroundColor: Color = DefaultColor
+		hoverColor: Color = DefaultColor
 		roundCornerRadius: int = 0
 		margin: int = 0
 
@@ -202,6 +206,13 @@ class RectWidgetBase(WidgetBase):
 	def setStyleSheet(self, cb: Callable[[StyleSheet], StyleSheet]):
 		self.styleSheet = cb(self.styleSheet)
 		self.diff = True
+
+	def setOverlay[T: OverlayBase](self, overlayType: type[T], **args) -> T:
+		self.overlay = overlayType(**({
+			"styleSheet": replace(self.theme[overlayType]),
+			"uniform": self.uniform
+		} | args))
+		return self.overlay
 
 	# ================ Event Handling ================
 	'''
@@ -245,14 +256,12 @@ class RectWidgetBase(WidgetBase):
 			case Events.MouseEnter:
 				if ((sub := self.subWidgetFindWithin_impl(event.pos)) is not self):
 					sub.handleEvent(event)
-				print("HoverEnter")
 				self.state.hover = True
 				self.diff = True
 				return False
 			case Events.MouseLeave:
 				if ((sub := self.subWidgetFindWithin_impl(event.pos)) is not self):
 					sub.handleEvent(event)
-				print("HoverLeave")
 				self.state.hover = False
 				self.diff = True
 				return False
@@ -340,8 +349,82 @@ class RectWidgetVLayout(RectWidgetBase):
 		super().activateLayout()
 
 
+# ################ Overlay ################
+'''
+Overlay are display objects which are attached to widgets as their visual manifest.
+Same as widgets, (by convention,) overlays are only constructible by calling
+setOverlay method of a rect widget.
+The design philosophy of overlays is to be stateless. An overlay object should
+as light as possible and are targeted to rely mostly on arguments and temporary
+values.
+'''
 
+type WidgetTheme = dict[type[RectWidgetBase],
+                        type[RectWidgetBase.StyleSheet]]
 
+@dataclass(slots=True)
+class OverlayBase:
+	# ================ Contract Interface ================
+	
+	def draw(self, parent: RectWidgetBase): pass
+
+	# ================ Style ================
+
+	@dataclass(slots=True)
+	class StyleSheet:
+		margin: int = 0
+	styleSheet: StyleSheet = field(default_factory=StyleSheet)
+
+	# ================ State & Global ================
+
+	diff: bool = True
+	uniform: Global | None = None
+
+@dataclass(slots=True)
+class LabelOverlay(OverlayBase):
+	texture: pygame.Surface | None = None
+
+	# ================ Contract Interface ================
+	
+	def draw(self, screen: pygame.Surface, parent: RectWidgetBase):
+		if (self.texture is None): return
+		screen.blit(self.texture,
+		            dest=(parent.pos.x + self.styleSheet.margin,
+		                  parent.pos.y + self.styleSheet.margin))
+
+	# ================ Public Interface ================
+	
+	def setText(self, text: str):
+		self.texture = self.font_impl(self.styleSheet.fontSize).render(
+			text, True, self.styleSheet.textColor)
+
+	# ================ Style ================
+
+	@dataclass(slots=True)
+	class StyleSheet(OverlayBase.StyleSheet):
+		textColor: Color = DefaultColor
+		fontSize: int = 48
+	styleSheet: StyleSheet = field(default_factory=StyleSheet)
+
+	def font_impl(self, fontSize):
+		return self.uniform.font.font(fontSize)
+
+@dataclass(slots=True)
+class IconOverlay(OverlayBase):
+	texture: pygame.Surface | None = None
+
+	# ================ Contract Interface ================
+	
+	def draw(self, screen: pygame.Surface, parent: RectWidgetBase):
+		if (self.texture is None): return
+		screen.blit(self.texture,
+		            dest=(parent.pos.x + self.styleSheet.margin,
+		                  parent.pos.y + self.styleSheet.margin))
+
+	# ================ Public Interface ================
+	
+	def setImage(self, texture: pygame.Surface):
+		self.texture = texture
 
 # ################ Input Handler ################
 
@@ -366,8 +449,13 @@ class InputHandler:
 			
 		return True
 
-
 # ################ Widgets ################
+'''
+Widget Instances, who are widgets that are not widget bases, does not exersise
+the same convention as widget bases. They are strictly leaf of a widget tree,
+and do not have sub-widgets under the normal contract. However, widgets can
+have sub widgets maintained directly or indirectly by explicit, manual logic.
+'''
 
 @dataclass(slots=True)
 class PushButtonWidget(RectWidgetBase):
@@ -375,7 +463,7 @@ class PushButtonWidget(RectWidgetBase):
 	This class also serves as a demo of the Event Handling system
 	'''
 
-	onPress: Callable[[], None] | Callable[[PushButtonWidget], None] = lambda: None
+	onPress: Callable[[], None] | Callable[[Self], None] = lambda: None
 
 	# ================ Contract Interface ================
 
@@ -385,7 +473,7 @@ class PushButtonWidget(RectWidgetBase):
 		# along with that, state is also modified
 		match (event.type):
 			case pygame.MOUSEBUTTONDOWN:
-				self.onPress()
+				optionalCall(self.onPress, self)
 			case _:	return False
 		return True
 
@@ -396,10 +484,12 @@ class PushButtonWidget(RectWidgetBase):
 @dataclass(slots=True)
 class ToggleWidget(PushButtonWidget):
 	on: bool = False
+	onToggle: Callable[[], None] | Callable[[Self], None] = lambda: None
 
 	def toggle(self):
 		self.on = not self.on
 		self.diff = True
+		optionalCall(self.onToggle, self)
 
 	def __post_init__(self):
 		self.onPress = self.toggle
@@ -429,14 +519,15 @@ class ToggleWidget(PushButtonWidget):
 		self.pos = ivec2(self.pos.x + self.dim.x / 2 - unit,
 		                 self.pos.y + self.dim.y / 2 - unit / 2)
 		self.dim = ivec2(unit * 2, unit)
+		self.diff = True
 
 	# ================ Style ================
 
 	@dataclass(slots=True)
 	class StyleSheet:
-		onColor: Color = Magenta
-		offColor: Color = Magenta
-		nodeColor: Color = Magenta
+		onColor: Color = DefaultColor
+		offColor: Color = DefaultColor
+		nodeColor: Color = DefaultColor
 		nodePadding: int = 4
 
 	styleSheet: StyleSheet = field(default_factory=StyleSheet)
@@ -483,7 +574,7 @@ class DragWidget(RectWidgetBase):
 
 	@dataclass(slots=True)
 	class StyleSheet(RectWidgetBase.StyleSheet):
-		dragColor: Color = Magenta
+		dragColor: Color = DefaultColor
 	styleSheet: StyleSheet = field(default_factory=StyleSheet)
 
 @dataclass(slots=True)
@@ -522,6 +613,7 @@ class SliderWidgetBase(RectWidgetBase):
 				self.dragger.pos[self.Axis] = event.pos[self.Axis] - self.dragger.dim[self.Axis] / 2
 				self.dragger.handleEvent(event)
 				self.diff = True
+				return True
 
 	def activateLayout(self):
 		if (self.dragger is not None): return
@@ -544,11 +636,11 @@ class SliderWidgetBase(RectWidgetBase):
 
 	@dataclass(slots=True)
 	class StyleSheet:
-		backgroundColor: Color = Magenta
-		hoverColor: Color = Magenta
-		draggerNormalColor: Color = Magenta
-		draggerHoverColor: Color = Magenta
-		draggerDragColor: Color = Magenta
+		backgroundColor: Color = DefaultColor
+		hoverColor: Color = DefaultColor
+		draggerNormalColor: Color = DefaultColor
+		draggerHoverColor: Color = DefaultColor
+		draggerDragColor: Color = DefaultColor
 		draggerMargin: float = 0.0
 		roundCornerRadius: int = 0
 		margin: int = 0
@@ -562,11 +654,44 @@ class SliderHWidget(SliderWidgetBase):
 class SliderVWidget(SliderWidgetBase):
     Axis: ClassVar[int] = 1
 
+@dataclass(slots=True)
+class LabelWidget(RectWidgetBase):
+	# ================ Contract Interface ================
 
-# ################ Overlay ################
-'''
-Overlay are display objects which are attached to widgets as their visual manifest.
-'''
+	def __post_init__(self):
+		self.setOverlay(LabelOverlay)
+
+	def activateLayout(self):
+		self.overlay.setText(self.text)
+	
+	# ================ Public Interface ================
+
+	text: str = ""
+
+	def setText(self, text: str):
+		self.text = text
+		self.activateLayout()
+
+@dataclass(slots=True)
+class IconWidget(RectWidgetBase):
+	# ================ Contract Interface ================
+
+	def __post_init__(self):
+		self.setOverlay(IconOverlay)
+
+	def activateLayout(self):
+		self.overlay.setImage(pygame.transform.scale(
+			self.source, scaleToFit(ivec2.fromTuple(self.source.get_size()), self.dim).toTuple()))
+
+	# ================ Public Interface ================
+
+	source: pygame.Surface | None = None
+
+	def setImage(self, path: str):
+		self.source = pygame.image.load(path).convert_alpha()
+		self.activateLayout()
+
+
 
 
 
@@ -578,7 +703,7 @@ class WidgetEngine[T: RectWidgetBase]:
 	'''
 
 	def __init__(self, windowDimension: ivec2, BaseWidgetType: type[T], theme: WidgetTheme):
-		self.screen = self.screen = pygame.display.set_mode((windowDimension.x, windowDimension.y))
+		self.screen = pygame.display.set_mode((windowDimension.x, windowDimension.y))
 		self.baseWidget = BaseWidgetType(
 			uniform=self.uniform,
 			dim=windowDimension, theme=theme, styleSheet = replace(theme[BaseWidgetType]))

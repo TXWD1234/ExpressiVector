@@ -1,7 +1,9 @@
 # Copyright (c) 2026 ExpressiVector. Licensed under the MIT License.
 
+from .geometry import *
 from dataclasses import dataclass
 from typing import Generic, TypeVar
+import pygame
 import inspect
 
 T = TypeVar('T')
@@ -42,3 +44,15 @@ def clamp[T](val: T, min_val: T, max_val: T) -> T:
     if val < min_val: return min_val
     if val > max_val: return max_val
     return val
+
+def scaleToFit(src: ivec2, target: ivec2) -> ivec2:
+	wr = target.x / src.x
+	hr = target.y / src.y
+	# if (wr > hr) then it's height bound
+	r = min(wr, hr)
+	return ivec2(src.x * r, src.y * r)
+
+def scaleToFit(src: ivec2, target: ivec2) -> ivec2:
+	r = min(target.x / src.x, target.y / src.y)
+	return ivec2(src.x * r, src.y * r)
+	

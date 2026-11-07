@@ -29,6 +29,14 @@ theme: tx.WidgetTheme = {
 		backgroundColor=tx.MikuColorBegin, hoverColor=tx.White,
 		draggerNormalColor=tx.LightBlue, draggerHoverColor=tx.Red, draggerDragColor=tx.Blue,
 		draggerMargin=4, roundCornerRadius=20, margin=10),
+	tx.LabelOverlay: tx.LabelOverlay.StyleSheet(
+		margin=10, textColor=tx.White, fontSize=64),
+	tx.LabelWidget: tx.LabelWidget.StyleSheet(
+		backgroundColor=tx.MikuColorBegin, roundCornerRadius=20, margin=0),
+	tx.IconOverlay: tx.IconOverlay.StyleSheet(
+		margin=0),
+	tx.IconWidget: tx.IconWidget.StyleSheet(
+		backgroundColor=tx.MikuColorBegin, roundCornerRadius=20, margin=0),
 }
 
 
@@ -49,7 +57,9 @@ def onSlide(slider: tx.SliderHWidget):
 
 s1 = w1.addWidget(tx.LinearLayoutAttribute(), tx.SliderHWidget, onValueChange=onSlide)
 
-w2 = base.addWidget(tx.LinearLayoutAttribute(proportion=2, absolute=False), tx.RectWidgetBase)
+w2 = base.addWidget(tx.LinearLayoutAttribute(proportion=2, absolute=False), tx.IconWidget)
+w2.setImage("/home/TX_Jerry/chen.bmp")
+
 w3 = base.addWidget(tx.LinearLayoutAttribute(), tx.DragWidget)
 
 base.activateLayout()
