@@ -4,6 +4,7 @@
 from .geometry import *
 from .rgb import *
 from .infrastructure import *
+from .engine import *
 from typing import Callable, Generic, TypeVar, Self, Any, ClassVar
 from pygame import draw
 from dataclasses import dataclass, field, replace
@@ -43,6 +44,7 @@ class Global:
 	state: GlobalState = GlobalState.Normal
 	focusWidget: Any | None = None
 	font: FontManager = field(default_factory=FontManager)
+	engine: Engine = field(default_factory=Engine)
 
 # ################ Widget Basics ################
 '''
@@ -237,7 +239,7 @@ class RectWidgetBase(WidgetBase):
 		return False
 
 	def handleEvent(self, event: pygame.Event) -> bool:
-		match event.type:
+		match (event.type):
 			case pygame.MOUSEBUTTONDOWN | pygame.MOUSEBUTTONUP:
 				return self.subWidgetHandleEvent_impl(
 					event, ivec2(event.pos[0], event.pos[1]))

@@ -37,37 +37,55 @@ theme: tx.WidgetTheme = {
 		margin=0),
 	tx.IconWidget: tx.IconWidget.StyleSheet(
 		backgroundColor=tx.MikuColorBegin, roundCornerRadius=20, margin=0),
+	tx.CanvasWidget: tx.CanvasWidget.StyleSheet(
+		backgroundColor=tx.MikuColorBegin, roundCornerRadius=20, margin=0),
 }
 
+def widgetDebug():
+	engine = tx.WidgetEngine(tx.ivec2(800, 600), tx.RectWidgetHLayout, theme)
+	base = engine.base()
+	base.styleSheet = tx.RectWidgetHLayout.StyleSheet(backgroundColor=tx.Black)
 
+	w1 = base.addWidget(tx.LinearLayoutAttribute(proportion=0.5, absolute=True), tx.RectWidgetVLayout)
 
-engine = tx.WidgetEngine(tx.ivec2(800, 600), tx.RectWidgetHLayout, theme)
-base = engine.base()
-base.styleSheet = tx.RectWidgetHLayout.StyleSheet(backgroundColor=tx.Black)
+	def onPush():
+		s1.setValue(0.0)
 
-w1 = base.addWidget(tx.LinearLayoutAttribute(proportion=0.5, absolute=True), tx.RectWidgetVLayout)
+	b1 = w1.addWidget(tx.LinearLayoutAttribute(proportion=0.5, absolute=True), tx.PushButtonWidget, onPress=onPush)
 
-def onPush():
-	s1.setValue(0.0)
+	def onSlide(slider: tx.SliderHWidget):
+		print(slider.value)
 
-b1 = w1.addWidget(tx.LinearLayoutAttribute(proportion=0.5, absolute=True), tx.PushButtonWidget, onPress=onPush)
+	s1 = w1.addWidget(tx.LinearLayoutAttribute(), tx.SliderHWidget, onValueChange=onSlide)
 
-def onSlide(slider: tx.SliderHWidget):
-	print(slider.value)
+	w2 = base.addWidget(tx.LinearLayoutAttribute(proportion=2, absolute=False), tx.IconWidget)
+	w2.setImage("/home/TX_Jerry/chen.bmp")
 
-s1 = w1.addWidget(tx.LinearLayoutAttribute(), tx.SliderHWidget, onValueChange=onSlide)
+	w3 = base.addWidget(tx.LinearLayoutAttribute(), tx.DragWidget)
 
-w2 = base.addWidget(tx.LinearLayoutAttribute(proportion=2, absolute=False), tx.IconWidget)
-w2.setImage("/home/TX_Jerry/chen.bmp")
+	base.activateLayout()
 
-w3 = base.addWidget(tx.LinearLayoutAttribute(), tx.DragWidget)
+	def update() -> bool:
+		return engine.update()
+	def render():
+		engine.render()
 
-base.activateLayout()
+	framework = tx.Framework(update, render)
+	framework.run()
 
-def update() -> bool:
-	return engine.update()
-def render():
-	engine.render()
+def engineDebug():
+	engine = tx.WidgetEngine(tx.ivec2(800, 600), tx.RectWidgetHLayout, theme)
+	base = engine.base()
+	canvasw = base.addWidget(tx.LinearLayoutAttribute(), tx.CanvasWidget)
 
-framework = tx.Framework(update, render)
-framework.run()
+	base.activateLayout()
+
+	def update() -> bool:
+		return engine.update()
+	def render():
+		engine.render()
+
+	framework = tx.Framework(update, render)
+	framework.run()
+
+engineDebug()

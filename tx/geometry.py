@@ -10,6 +10,22 @@ def dot(in1: 'vec2', in2: 'vec2') -> float:
 class vec2:
 	x: float
 	y: float
+
+	def abs(self): return vec2(abs(self.x), abs(self.y))
+
+	@staticmethod
+	def fromTuple(v: tuple[float, float]) -> vec2:
+		return vec2(v[0], v[1])
+
+	def toTuple(self) -> tuple[float, float]:
+		return (self.x, self.y)
+
+	@staticmethod
+	def fromIvec2(v: ivec2) -> vec2:
+		return vec2(float(v.x), float(v.y))
+
+	def toIvec2(self) -> ivec2:
+		return ivec2(math.floor(self.x), math.floor(self.y))
 	
 	def __init__(self, x: float = 0.0, y: float = 0.0):
 		self.x = x
@@ -81,10 +97,10 @@ class vec2:
 		return not self.__eq__(other)
 
 	def __lt__(self, other):
-		return (self.x**2 + self.y**2) < (other.m_x**2 + other.m_y**2)
+		return (self.x**2 + self.y**2) < (other.x**2 + other.y**2)
 
 	def __gt__(self, other):
-		return (self.x**2 + self.y**2) > (other.m_x**2 + other.m_y**2)
+		return (self.x**2 + self.y**2) > (other.x**2 + other.y**2)
 
 	def length(self) -> float:
 		return math.sqrt(dot(self, self))
@@ -106,12 +122,21 @@ class ivec2:
 	x: int
 	y: int
 
+	def abs(self): return ivec2(abs(self.x), abs(self.y))
+
 	@staticmethod
 	def fromTuple(v: tuple[int, int]) -> ivec2:
 		return ivec2(v[0], v[1])
 
 	def toTuple(self) -> tuple[int, int]:
 		return (self.x, self.y)
+
+	@staticmethod
+	def fromVec2(v: ivec2) -> ivec2:
+		return ivec2(math.floor(v.x), math.floor(v.y))
+
+	def toVec2(self) -> vec2:
+		return vec2(float(self.x), float(self.y))
 	
 	def __init__(self, x: int = 0, y: int = None):
 		self.x = int(x)
@@ -197,10 +222,10 @@ class ivec2:
 
 
 def toIvec2(in_vec: vec2) -> ivec2:
-	return ivec2(math.floor(in_vec.x()), math.floor(in_vec.y()))
+	return ivec2(math.floor(in_vec.x), math.floor(in_vec.y))
 
 def toVec2(in_coord: ivec2) -> vec2:
-	return vec2(float(in_coord.x()), float(in_coord.y()))
+	return vec2(float(in_coord.x), float(in_coord.y))
 
 import pygame
 
@@ -210,3 +235,7 @@ def makeRect(pos: ivec2, dim: ivec2) -> Rect:
 
 def inRange(range: Rect, pos: ivec2) -> bool:
 	return pygame.Rect(range).collidepoint(pos.x, pos.y)
+
+def  leftPerp(v: vec2) -> vec2: return vec2(-v.y, v.x)
+def rightPerp(v: vec2) -> vec2: return vec2(v.y, -v.x)
+def normalize(v: vec2) -> vec2: return v / v.length()
