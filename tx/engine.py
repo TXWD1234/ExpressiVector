@@ -7,9 +7,10 @@ from typing import Callable, Generic, TypeVar, Self, Any, ClassVar
 import pygame
 from dataclasses import dataclass, field, replace
 
+# ================================================================
+# **************** Expressive Vector Image Engine ****************
+# ================================================================
 '''
-Expressive Vector Image Engine
-
 --- Coordinate System ---
 The coordinate in the canvas is relative to the size of the canvas, in the unit
 of pixels.
@@ -20,7 +21,7 @@ still continuous coordinates.
 The unit in the engine is defined as: Engine Canvas Virtual Pixel Coordinate, or
 Canvas VP Coordinate / vpc.
 
-Engine Lifetime
+--- Engine Lifetime ---
 One engine instance manages one document.
 '''
 
@@ -58,6 +59,13 @@ class Engine:
 			scale, pygame.Surface((self.canvasState.dim * scale).toIvec2().toTuple(), pygame.SRCALPHA))
 		self.render_impl(self.canvasCache.canvas, scale)
 		return self.canvasCache.canvas
+	#def redraw(self, scale: float) -> pygame.Surface:
+	#	scale *= 2
+	#	self.canvasCache = self.CanvasCache(
+	#		scale, pygame.Surface((self.canvasState.dim * scale).toIvec2().toTuple(), pygame.SRCALPHA))
+	#	self.render_impl(self.canvasCache.canvas, scale)
+	#	self.canvasCache.canvas = pygame.transform.smoothscale(self.canvasCache.canvas, (self.canvasState.dim * scale * 0.5).toIvec2().toTuple())
+	#	return self.canvasCache.canvas
 
 	# ================ Implementation Utility ================
 

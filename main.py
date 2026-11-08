@@ -8,6 +8,33 @@ pygame.init()
 
 from dataclasses import replace
 
+class WidgetEngine[T: tx.RectWidgetBase]:
+	'''
+	Highest level wrapper of the widget system
+	'''
+
+	def __init__(self, windowDimension: tx.ivec2, BaseWidgetType: type[T], theme: tx.WidgetTheme):
+		self.screen = pygame.display.set_mode((windowDimension.x, windowDimension.y))
+		self.baseWidget = BaseWidgetType(
+			uniform=self.uniform,
+			dim=windowDimension, theme=theme, styleSheet = replace(theme[BaseWidgetType]))
+		
+	# ================ Contract Interface ================
+
+	def base(self) -> T:
+		return self.baseWidget
+
+	def render(self):
+		self.baseWidget.render(self.screen)
+
+	def update(self) -> bool:
+		self.baseWidget.update()
+		return tx.InputHandler.handle(self.baseWidget, self.uniform)
+
+	# ================ Global ================
+
+	uniform: tx.Global = tx.Global()
+
 theme: tx.WidgetTheme = {
 	tx.RectWidgetBase: tx.RectWidgetBase.StyleSheet(
 		backgroundColor=tx.MikuColorBegin, roundCornerRadius=20, margin=0),
@@ -42,7 +69,7 @@ theme: tx.WidgetTheme = {
 }
 
 def widgetDebug():
-	engine = tx.WidgetEngine(tx.ivec2(800, 600), tx.RectWidgetHLayout, theme)
+	engine = WidgetEngine(tx.ivec2(800, 600), tx.RectWidgetHLayout, theme)
 	base = engine.base()
 	base.styleSheet = tx.RectWidgetHLayout.StyleSheet(backgroundColor=tx.Black)
 
@@ -74,7 +101,7 @@ def widgetDebug():
 	framework.run()
 
 def engineDebug():
-	engine = tx.WidgetEngine(tx.ivec2(800, 600), tx.RectWidgetHLayout, theme)
+	engine = WidgetEngine(tx.ivec2(800, 600), tx.RectWidgetHLayout, theme)
 	base = engine.base()
 	canvasw = base.addWidget(tx.LinearLayoutAttribute(), tx.CanvasWidget)
 

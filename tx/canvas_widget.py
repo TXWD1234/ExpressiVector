@@ -1,6 +1,6 @@
 # Copyright (c) 2026 ExpressiVector. Licensed under the MIT License.
 
-from .widget_engine import *
+from .widget_infrastructure import *
 
 class CanvasState(Enum):
 	Normal = auto()

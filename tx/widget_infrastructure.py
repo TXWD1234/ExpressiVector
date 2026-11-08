@@ -692,36 +692,3 @@ class IconWidget(RectWidgetBase):
 	def setImage(self, path: str):
 		self.source = pygame.image.load(path).convert_alpha()
 		self.activateLayout()
-
-
-
-
-
-
-
-class WidgetEngine[T: RectWidgetBase]:
-	'''
-	Highest level wrapper of the widget system
-	'''
-
-	def __init__(self, windowDimension: ivec2, BaseWidgetType: type[T], theme: WidgetTheme):
-		self.screen = pygame.display.set_mode((windowDimension.x, windowDimension.y))
-		self.baseWidget = BaseWidgetType(
-			uniform=self.uniform,
-			dim=windowDimension, theme=theme, styleSheet = replace(theme[BaseWidgetType]))
-		
-	# ================ Contract Interface ================
-
-	def base(self) -> T:
-		return self.baseWidget
-
-	def render(self):
-		self.baseWidget.render(self.screen)
-
-	def update(self) -> bool:
-		self.baseWidget.update()
-		return InputHandler.handle(self.baseWidget, self.uniform)
-
-	# ================ Global ================
-
-	uniform: Global = Global()

@@ -3,6 +3,6 @@
 from .framework import *
 from .geometry import *
 from .rgb import *
-from .widget_engine import *
+from .widget_infrastructure import *
 from .engine import *
 from .canvas_widget import *
