@@ -152,3 +152,4 @@ class Engine:
 		canvas.blit(pygame.transform.scale(pygame.image.load("/home/TX_Jerry/chen.bmp").convert(), canvas.get_size()))
 		if (self.circle is not None):
 			pygame.draw.circle(canvas, White, (self.circle * scale).toTuple(), 64 * self.canvasCache.scale)
+		self.strokeRender(canvas, scale)

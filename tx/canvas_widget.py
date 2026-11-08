@@ -42,6 +42,9 @@ class CanvasWidget(RectWidgetBase):
 	def findVPPos_impl(self, pos: vec2):
 		return pos / self.cameraState.scale + self.cameraState.pos
 
+	def findVPPosFromHanlder_impl(self, pos: tuple[int, int]) -> vec2:
+		return self.findVPPos_impl(vec2.fromIvec2(ivec2.fromTuple(pos) - self.pos))
+
 	# @param anchor the point fixed in viewport space before and after zooming;
 	#               in vpc
 	def zoom_impl(self, newScale: float, anchor: vec2):
@@ -88,7 +91,8 @@ class CanvasWidget(RectWidgetBase):
 			case pygame.MOUSEBUTTONDOWN:
 				match (event.button):
 					case 1:  # Left Click
-						self.uniform.engine.drawCircle(self.findVPPos_impl(vec2.fromIvec2(ivec2.fromTuple(event.pos) - self.pos)))
+						self.uniform.engine.strokeCreate(self.findVPPosFromHanlder_impl(event.pos), White, 16)
+						self.state.state.append(CanvasState.Edit)
 						self.diff = True
 					case 2:  # Middle Click
 						self.state.state.append(CanvasState.Drag)
@@ -96,15 +100,16 @@ class CanvasWidget(RectWidgetBase):
 						pass
 					case 4:  # Scroll Up
 						self.zoom_impl(self.cameraState.scale / self.cameraConfig.zoomFactor,
-									   self.findVPPos_impl(vec2.fromIvec2(ivec2.fromTuple(event.pos) - self.pos)))
+									   self.findVPPosFromHanlder_impl(event.pos))
 						self.diff = True
 					case 5:  # Scroll Down
 						self.zoom_impl(self.cameraState.scale * self.cameraConfig.zoomFactor,
-									   self.findVPPos_impl(vec2.fromIvec2(ivec2.fromTuple(event.pos) - self.pos)))
+						               self.findVPPosFromHanlder_impl(event.pos))
 						self.diff = True
 			case pygame.MOUSEBUTTONUP:
 				match (event.button):
 					case 1:  # Left Click
+						self.state.state.pop()
 						pass
 					case 2:  # Middle Click
 						if (self.state.state[-1] == CanvasState.Drag): self.state.state.pop()
@@ -118,3 +123,9 @@ class CanvasWidget(RectWidgetBase):
 						diff: vec2 = vec2.fromTuple(event.rel) / self.cameraState.scale
 						self.cameraState.pos -= diff
 						self.diff = True
+					case CanvasState.Edit:
+						match (self.state.editState[-1]):
+							case EditState.Stroke:
+								self.uniform.engine.strokeAppend(self.findVPPosFromHanlder_impl(event.pos))
+						self.diff = True
+								
