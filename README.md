@@ -40,18 +40,18 @@ The project includes:
 **To begin: select a tool on the sidebar at the right.**
 
 ## Basic
-**To select tool:** click the icon on the sidebar of the respective tool
-**To pan (move camera):** drag while holding down middle mouse button
-**To zoom in/out:** scroll middle mouse button
+- **To select tool:** click the icon on the sidebar of the respective tool
+- **To pan (move camera):** drag while holding down middle mouse button
+- **To zoom in/out:** scroll middle mouse button
 
 ## Stroke Tool:
-**To draw stroke:** move the cursor while holding down left mouse button
+- **To draw stroke:** move the cursor while holding down left mouse button
 
 # Credit
-UI Widget System inspired by: [Qt](https://www.qt.io/)
-Dark Visual Theme inspired by: [Adobe Photoshop](https://www.adobe.com/products/photoshop.html)
-Geometry Infrastructure inspired by: [TXLib](https://www.github.com/TXWD1234/TXLib)
-Project back by: [Pygame](https://www.pygame.org/docs/)
+- UI Widget System inspired by: [Qt](https://www.qt.io/)
+- Dark Visual Theme inspired by: [Adobe Photoshop](https://www.adobe.com/products/photoshop.html)
+- Geometry Infrastructure inspired by: [TXLib](https://www.github.com/TXWD1234/TXLib)
+- Project back by: [Pygame](https://www.pygame.org/docs/)
 
 ## School Project Disclaimer
 This project is indeed planned to be submitted as a school project. However, most of it's content was exceeding the requirement of the school project and was my own inspiration. Therefore, from the pursuit of showing this project to the public, as well as completing my Terra session during the time of the development of this project, the decision of submiting it to Terra was made.
