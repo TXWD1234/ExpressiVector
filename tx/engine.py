@@ -3,7 +3,7 @@
 from .geometry import *
 from .rgb import *
 from .infrastructure import *
-from typing import Callable, Generic, TypeVar, Self, Any, ClassVar
+from .engine_handler import *
 import pygame
 from dataclasses import dataclass, field, replace
 
@@ -32,8 +32,8 @@ class Engine:
 	@dataclass(slots=True)
 	class CanvasState:
 		# dim is the real dimension of the canvas in vp coordinates
-		#dim: ivec2 = field(default_factory=lambda: ivec2(1920, 1080))
-		dim: vec2 = field(default_factory=lambda: vec2(322, 322))
+		dim: vec2 = field(default_factory=lambda: vec2(800, 600))
+		#dim: vec2 = field(default_factory=lambda: vec2(322, 322))
 	canvasState: CanvasState = field(default_factory=CanvasState)
 
 
@@ -157,7 +157,8 @@ class Engine:
 	# ================ Master Rendering ================
 
 	def render_impl(self, canvas: pygame.Surface, scale: float):
-		canvas.blit(pygame.transform.scale(pygame.image.load("/home/TX_Jerry/chen.bmp").convert(), canvas.get_size()))
+		canvas.fill(White)
+		#canvas.blit(pygame.transform.scale(pygame.image.load("/home/TX_Jerry/chen.bmp").convert(), canvas.get_size()))
 		if (self.circle is not None):
 			pygame.draw.circle(canvas, White, (self.circle * scale).toTuple(), 64 * self.canvasCache.scale)
 		self.strokeRender(canvas, scale)

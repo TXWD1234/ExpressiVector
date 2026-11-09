@@ -35,16 +35,18 @@ class FontManager:
 
 # ################ Globals ################
 
-class GlobalState(Enum):
+class WidgetState(Enum):
 	Normal = auto()
 	Focused = auto()
 
 @dataclass(slots=True)
 class Global:
-	state: GlobalState = GlobalState.Normal
+	widgetState: WidgetState = WidgetState.Normal
 	focusWidget: Any | None = None
 	font: FontManager = field(default_factory=FontManager)
 	engine: Engine = field(default_factory=Engine)
+	engineState: list[EngineState] = field(default_factory=lambda: [EngineState.Normal])
+	editState: EditState = EditState.Nothing
 
 # ################ Widget Basics ################
 '''
@@ -328,7 +330,9 @@ class RectWidgetHLayout(RectWidgetBase):
 
 	def activateLayout(self):
 		'''recursive'''
-		for w in self.widgets: w.dim.y = self.dim.y
+		for w in self.widgets:
+			w.dim.y = self.dim.y
+			w.pos.y = self.pos.y
 		self.solver.solve(self.pos.x, self.dim.x, self.modifier_impl)
 		super().activateLayout()
 
@@ -346,7 +350,10 @@ class RectWidgetVLayout(RectWidgetBase):
 		return super().addWidget(widgetType, **arg)
 
 	def activateLayout(self):
-		for w in self.widgets: w.dim.x = self.dim.x
+		'''recursive'''
+		for w in self.widgets:
+			w.dim.x = self.dim.x
+			w.pos.x = self.pos.x
 		self.solver.solve(self.pos.y, self.dim.y, self.modifier_impl)
 		super().activateLayout()
 
@@ -444,9 +451,9 @@ class InputHandler:
 			match (event.type):
 				case pygame.QUIT: return False
 				case _:
-					if (uniform.state == GlobalState.Normal):
+					if (uniform.widgetState == WidgetState.Normal):
 						baseWidget.handleEvent(event)
-					if (uniform.state == GlobalState.Focused):
+					if (uniform.widgetState == WidgetState.Focused):
 						tryCall(uniform.focusWidget, "handleEvent", event)
 			
 		return True
@@ -549,13 +556,13 @@ class DragWidget(RectWidgetBase):
 		if (not self.dragging and super().handleEvent(event)): return True
 		match (event.type):
 			case pygame.MOUSEBUTTONDOWN:
-				self.uniform.state = GlobalState.Focused
+				self.uniform.widgetState = WidgetState.Focused
 				self.uniform.focusWidget = self
 				self.state.colorOverride = self.styleSheet.dragColor
 				self.dragging = True
 				return True
 			case pygame.MOUSEBUTTONUP:
-				self.uniform.state = GlobalState.Normal
+				self.uniform.widgetState = WidgetState.Normal
 				self.uniform.focusWidget = None
 				self.state.colorOverride = None
 				self.dragging = False

@@ -35,41 +35,10 @@ class WidgetEngine[T: tx.RectWidgetBase]:
 
 	uniform: tx.Global = tx.Global()
 
-theme: tx.WidgetTheme = {
-	tx.RectWidgetBase: tx.RectWidgetBase.StyleSheet(
-		backgroundColor=tx.MikuColorBegin, roundCornerRadius=20, margin=0),
-	tx.RectWidgetHLayout: tx.RectWidgetHLayout.StyleSheet(
-		backgroundColor=tx.MikuColorBegin, roundCornerRadius=20, margin=0),
-	tx.RectWidgetVLayout: tx.RectWidgetVLayout.StyleSheet(
-		backgroundColor=tx.MikuColorBegin, roundCornerRadius=20, margin=0),
-	tx.PushButtonWidget: tx.PushButtonWidget.StyleSheet(
-		backgroundColor=tx.Blue, roundCornerRadius=20, margin=10),
-	tx.ToggleWidget: tx.ToggleWidget.StyleSheet(
-		onColor=tx.Blue, offColor=tx.LightGray, nodeColor=tx.White, nodePadding=4),
-	tx.DragWidget: tx.DragWidget.StyleSheet(
-		backgroundColor=tx.Blue, roundCornerRadius=20, margin=10),
-	tx.SliderHWidget: tx.SliderWidgetBase.StyleSheet(
-		backgroundColor=tx.MikuColorBegin, hoverColor=tx.White,
-		draggerNormalColor=tx.LightBlue, draggerHoverColor=tx.Red, draggerDragColor=tx.Blue,
-		draggerMargin=4, roundCornerRadius=20, margin=10),
-	tx.SliderVWidget: tx.SliderWidgetBase.StyleSheet(
-		backgroundColor=tx.MikuColorBegin, hoverColor=tx.White,
-		draggerNormalColor=tx.LightBlue, draggerHoverColor=tx.Red, draggerDragColor=tx.Blue,
-		draggerMargin=4, roundCornerRadius=20, margin=10),
-	tx.LabelOverlay: tx.LabelOverlay.StyleSheet(
-		margin=10, textColor=tx.White, fontSize=64),
-	tx.LabelWidget: tx.LabelWidget.StyleSheet(
-		backgroundColor=tx.MikuColorBegin, roundCornerRadius=20, margin=0),
-	tx.IconOverlay: tx.IconOverlay.StyleSheet(
-		margin=0),
-	tx.IconWidget: tx.IconWidget.StyleSheet(
-		backgroundColor=tx.MikuColorBegin, roundCornerRadius=20, margin=0),
-	tx.CanvasWidget: tx.CanvasWidget.StyleSheet(
-		backgroundColor=tx.MikuColorBegin, roundCornerRadius=20, margin=0),
-}
+
 
 def widgetDebug():
-	engine = WidgetEngine(tx.ivec2(800, 600), tx.RectWidgetHLayout, theme)
+	engine = WidgetEngine(tx.ivec2(800, 600), tx.RectWidgetHLayout, tx.theme)
 	base = engine.base()
 	base.styleSheet = tx.RectWidgetHLayout.StyleSheet(backgroundColor=tx.Black)
 
@@ -101,7 +70,7 @@ def widgetDebug():
 	framework.run()
 
 def engineDebug():
-	engine = WidgetEngine(tx.ivec2(800, 600), tx.RectWidgetHLayout, theme)
+	engine = WidgetEngine(tx.ivec2(800, 600), tx.RectWidgetHLayout, tx.theme)
 	base = engine.base()
 	canvasw = base.addWidget(tx.LinearLayoutAttribute(), tx.CanvasWidget)
 
@@ -115,4 +84,17 @@ def engineDebug():
 	framework = tx.Framework(update, render)
 	framework.run()
 
-engineDebug()
+def appDebug():
+	engine = WidgetEngine(tx.ivec2(1600, 900), tx.ApplicationWidget, tx.theme)
+
+	engine.base().activateLayout()
+
+	def update() -> bool:
+		return engine.update()
+	def render():
+		engine.render()
+
+	framework = tx.Framework(update, render)
+	framework.run()
+
+appDebug()

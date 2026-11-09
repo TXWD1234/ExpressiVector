@@ -6,3 +6,4 @@ from .rgb import *
 from .widget_infrastructure import *
 from .engine import *
 from .canvas_widget import *
+from .widgets import *

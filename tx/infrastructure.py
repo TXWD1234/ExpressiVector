@@ -3,8 +3,10 @@
 from .geometry import *
 from dataclasses import dataclass
 from typing import Generic, TypeVar
+from pathlib import Path
 import pygame
 import inspect
+import sys
 
 T = TypeVar('T')
 
@@ -55,4 +57,8 @@ def scaleToFit(src: ivec2, target: ivec2) -> ivec2:
 def scaleToFit(src: ivec2, target: ivec2) -> ivec2:
 	r = min(target.x / src.x, target.y / src.y)
 	return ivec2(src.x * r, src.y * r)
-	
+
+def getProgramDir() -> Path:
+	if hasattr(sys, '_MEIPASS'): # when running in pyinstaller executable
+		return Path(sys._MEIPASS)
+	return Path(__file__).parent.parent

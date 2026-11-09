@@ -2,14 +2,6 @@
 
 from .widget_infrastructure import *
 
-class CanvasState(Enum):
-	Normal = auto()
-	Drag = auto()
-	Edit = auto()
-
-class EditState(Enum):
-	Stroke = auto()
-
 @dataclass(slots=True)
 class CanvasWidget(RectWidgetBase):
 	# ================ Camera System ================
@@ -22,7 +14,6 @@ class CanvasWidget(RectWidgetBase):
 		# zooming factor for zooming out; zoom in is just 1 / zoomFactor
 		# applied to the scale state when zooming is performed
 		zoomFactor: float = 0.9
-
 
 	cameraConfig: CameraConfig = field(default_factory=CameraConfig)
 
@@ -58,7 +49,6 @@ class CanvasWidget(RectWidgetBase):
 		# bind to current engine (document)
 		# self.cameraState.pos = self.uniform.engine.canvasState.dim * 0.5
 		self.uniform.engine.redraw(1.0)
-		self.state.editState.append(EditState.Stroke) # DevNote: temp
 
 	def draw(self, screen: pygame.Surface):
 		super().draw(screen)
@@ -75,27 +65,26 @@ class CanvasWidget(RectWidgetBase):
 
 		self.diff = False
 
-
-	@dataclass(slots=True)
-	class State(RectWidgetBase.State):
-		state: list[CanvasState] = field(default_factory=lambda: [CanvasState.Normal])
-		editState: list[EditState] = field(default_factory=list)
-	state: State = field(default_factory=State)	
-
 	def handleEvent(self, event):
 		match (event.type):
 			case Events.MouseEnter:
 				self.state.hover = True
+				self.diff = True
 			case Events.MouseLeave:
 				self.state.hover = False
+				self.diff = True
 			case pygame.MOUSEBUTTONDOWN:
 				match (event.button):
 					case 1:  # Left Click
-						self.uniform.engine.strokeCreate(self.findVPPosFromHanlder_impl(event.pos), White, 16)
-						self.state.state.append(CanvasState.Edit)
 						self.diff = True
+						match (self.uniform.editState):
+							case EditState.Stroke:
+								self.uniform.engine.strokeCreate(self.findVPPosFromHanlder_impl(event.pos), Black, 16)
+								self.uniform.engineState.append(EngineState.Edit)
+							case EditState.Nothing:
+								diff = False
 					case 2:  # Middle Click
-						self.state.state.append(CanvasState.Drag)
+						self.uniform.engineState.append(EngineState.Drag)
 					case 3:  # Right Click
 						pass
 					case 4:  # Scroll Up
@@ -109,22 +98,23 @@ class CanvasWidget(RectWidgetBase):
 			case pygame.MOUSEBUTTONUP:
 				match (event.button):
 					case 1:  # Left Click
-						self.state.state.pop()
+						if (len(self.uniform.engineState) > 1):
+							self.uniform.engineState.pop()
 						pass
 					case 2:  # Middle Click
-						if (self.state.state[-1] == CanvasState.Drag): self.state.state.pop()
+						if (self.uniform.engineState[-1] == EngineState.Drag): self.uniform.engineState.pop()
 					case 3:  # Right Click
 						pass
 			case pygame.MOUSEMOTION:
-				match (self.state.state[-1]):
-					case CanvasState.Normal:
+				match (self.uniform.engineState[-1]):
+					case EngineState.Normal:
 						pass
-					case CanvasState.Drag:
+					case EngineState.Drag:
 						diff: vec2 = vec2.fromTuple(event.rel) / self.cameraState.scale
 						self.cameraState.pos -= diff
 						self.diff = True
-					case CanvasState.Edit:
-						match (self.state.editState[-1]):
+					case EngineState.Edit:
+						match (self.uniform.editState):
 							case EditState.Stroke:
 								self.uniform.engine.strokeAppend(self.findVPPosFromHanlder_impl(event.pos))
 						self.diff = True
