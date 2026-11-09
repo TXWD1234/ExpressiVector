@@ -42,7 +42,7 @@ class IconedPushButtonWidget(PushButtonWidget):
 
 def setEditStateCb_impl(w: IconedPushButtonWidget, state: EditState):
 	w.uniform.editState = state if w.uniform.editState != state else EditState.Nothing
-	w.parent.parent.editStateUpdate()
+	w.uniform.app.editStateUpdate()
 
 @dataclass(slots=True)
 class SidebarWidget(RectWidgetVLayout):
@@ -75,7 +75,7 @@ class ConfigWidgetOutline(RectWidgetBase):
 
 # ################ Application ################
 
-@dataclass(slots=True)
+@dataclass(slots=True, weakref_slot=True)
 class ApplicationWidget(RectWidgetHLayout):
 	def __post_init__(self):
 		self.addWidget(LinearLayoutAttribute(order=0), CanvasWidget)

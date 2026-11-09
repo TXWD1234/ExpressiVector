@@ -4,6 +4,7 @@ import src
 import math
 import random
 import pygame
+import weakref
 pygame.init()
 
 from dataclasses import replace
@@ -18,6 +19,7 @@ class WidgetEngine[T: src.RectWidgetBase]:
 		self.baseWidget = BaseWidgetType(
 			uniform=self.uniform,
 			dim=windowDimension, theme=theme, styleSheet = replace(theme[BaseWidgetType]))
+		self.uniform.app = weakref.proxy(self.baseWidget) # weak ptr
 		
 	# ================ Contract Interface ================
 

@@ -1,11 +1,12 @@
 # Copyright (c) 2026 ExpressiVector. Licensed under the MIT License.
 # Inspired by: Qt
 
+from __future__ import annotations
 from .geometry import *
 from .rgb import *
 from .infrastructure import *
 from .engine import *
-from typing import Callable, Generic, TypeVar, Self, Any, ClassVar
+from typing import Callable, Generic, TypeVar, Self, Any, ClassVar, TYPE_CHECKING
 from pygame import draw
 from dataclasses import dataclass, field, replace
 from collections import deque
@@ -39,6 +40,9 @@ class WidgetState(Enum):
 	Normal = auto()
 	Focused = auto()
 
+if TYPE_CHECKING:
+    from .widgets import ApplicationWidget
+
 @dataclass(slots=True)
 class Global:
 	widgetState: WidgetState = WidgetState.Normal
@@ -47,6 +51,7 @@ class Global:
 	engine: Engine = field(default_factory=Engine)
 	engineState: list[EngineState] = field(default_factory=lambda: [EngineState.Normal])
 	editState: EditState = EditState.Nothing
+	app: ApplicationWidget | None = None # ApplicationWidget
 
 # ################ Widget Basics ################
 '''
