@@ -621,6 +621,7 @@ class SliderWidgetBase(RectWidgetBase):
 			case pygame.MOUSEBUTTONDOWN:
 				self.dragger.pos[self.Axis] = event.pos[self.Axis] - self.dragger.dim[self.Axis] / 2
 				self.dragger.handleEvent(event)
+				self.handleDrag_impl()
 				self.diff = True
 				return True
 

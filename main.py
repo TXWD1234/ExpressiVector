@@ -98,3 +98,4 @@ def appDebug():
 	framework.run()
 
 appDebug()
+#widgetDebug()

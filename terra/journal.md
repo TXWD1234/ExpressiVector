@@ -19,3 +19,10 @@ That said, I believe this project could qualify for being an exception of the "N
 On that note, just like stated earlier, the development in python is pretty unfamiliar to me as I am still learning the syntax and langauge intrinsics, therefore the development efficiency is expected to be quite pathetic for the first few days.
 *And it cannot be over stated about how much I HATE Python. It is the most redundent, convoluted and inefficient language ever. It is, in my regard, the worse way to create any sort of application.*
 *Remember the project overview above? Remember I listed "accessibility, maintainability, readability" and all that? Guess why me, the system programmer that values performance and execution efficiency over everything, didn't put "performance" up there? That's because I've lost all my hopes in python to be anywhere from optimised. The language is inherently flawed in aspect of being any efficient.*
+
+## 2026-11-08 21:09:07:<br>Category: Development Report<br>Topic: Infrastructure Development Retrospective
+As the completion of the first viable tool: Stroke was accomplished, the first week of development was marked finished.
+The focus of this week was mostly infrastructure and basic environments. However, despite the lack of experience and the lack of infrastructure, the progress on the project was surprisingly substancial.
+During this week, the general UI Widget System was implemented. Now all UI can be built on top of the existing architecture without repeating implementation.
+The Core Engine and Canvas Management of the project was also implemented.
+Other additional progress include the preliminary interface, the theme inspired by Photoshop, and the extra specialized UI widgets implemented for future usage.
