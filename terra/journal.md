@@ -26,3 +26,5 @@ The focus of this week was mostly infrastructure and basic environments. However
 During this week, the general UI Widget System was implemented. Now all UI can be built on top of the existing architecture without repeating implementation.
 The Core Engine and Canvas Management of the project was also implemented.
 Other additional progress include the preliminary interface, the theme inspired by Photoshop, and the extra specialized UI widgets implemented for future usage.
+
+14 water, 6 bok choy seeds and 8 cabbage seeds

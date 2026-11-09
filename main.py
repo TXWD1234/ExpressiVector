@@ -1,6 +1,6 @@
 # Copyright (c) 2026 ExpressiVector. Licensed under the MIT License.
 
-import tx
+import src
 import math
 import random
 import pygame
@@ -8,12 +8,12 @@ pygame.init()
 
 from dataclasses import replace
 
-class WidgetEngine[T: tx.RectWidgetBase]:
+class WidgetEngine[T: src.RectWidgetBase]:
 	'''
 	Highest level wrapper of the widget system
 	'''
 
-	def __init__(self, windowDimension: tx.ivec2, BaseWidgetType: type[T], theme: tx.WidgetTheme):
+	def __init__(self, windowDimension: src.ivec2, BaseWidgetType: type[T], theme: src.WidgetTheme):
 		self.screen = pygame.display.set_mode((windowDimension.x, windowDimension.y))
 		self.baseWidget = BaseWidgetType(
 			uniform=self.uniform,
@@ -29,35 +29,35 @@ class WidgetEngine[T: tx.RectWidgetBase]:
 
 	def update(self) -> bool:
 		self.baseWidget.update()
-		return tx.InputHandler.handle(self.baseWidget, self.uniform)
+		return src.InputHandler.handle(self.baseWidget, self.uniform)
 
 	# ================ Global ================
 
-	uniform: tx.Global = tx.Global()
+	uniform: src.Global = src.Global()
 
 
 
 def widgetDebug():
-	engine = WidgetEngine(tx.ivec2(800, 600), tx.RectWidgetHLayout, tx.theme)
+	engine = WidgetEngine(src.ivec2(800, 600), src.RectWidgetHLayout, src.theme)
 	base = engine.base()
-	base.styleSheet = tx.RectWidgetHLayout.StyleSheet(backgroundColor=tx.Black)
+	base.styleSheet = src.RectWidgetHLayout.StyleSheet(backgroundColor=src.Black)
 
-	w1 = base.addWidget(tx.LinearLayoutAttribute(proportion=0.5, absolute=True), tx.RectWidgetVLayout)
+	w1 = base.addWidget(src.LinearLayoutAttribute(proportion=0.5, absolute=True), src.RectWidgetVLayout)
 
 	def onPush():
 		s1.setValue(0.0)
 
-	b1 = w1.addWidget(tx.LinearLayoutAttribute(proportion=0.5, absolute=True), tx.PushButtonWidget, onPress=onPush)
+	b1 = w1.addWidget(src.LinearLayoutAttribute(proportion=0.5, absolute=True), src.PushButtonWidget, onPress=onPush)
 
-	def onSlide(slider: tx.SliderHWidget):
+	def onSlide(slider: src.SliderHWidget):
 		print(slider.value)
 
-	s1 = w1.addWidget(tx.LinearLayoutAttribute(), tx.SliderHWidget, onValueChange=onSlide)
+	s1 = w1.addWidget(src.LinearLayoutAttribute(), src.SliderHWidget, onValueChange=onSlide)
 
-	w2 = base.addWidget(tx.LinearLayoutAttribute(proportion=2, absolute=False), tx.IconWidget)
+	w2 = base.addWidget(src.LinearLayoutAttribute(proportion=2, absolute=False), src.IconWidget)
 	w2.setImage("/home/TX_Jerry/chen.bmp")
 
-	w3 = base.addWidget(tx.LinearLayoutAttribute(), tx.DragWidget)
+	w3 = base.addWidget(src.LinearLayoutAttribute(), src.DragWidget)
 
 	base.activateLayout()
 
@@ -66,13 +66,13 @@ def widgetDebug():
 	def render():
 		engine.render()
 
-	framework = tx.Framework(update, render)
+	framework = src.Framework(update, render)
 	framework.run()
 
 def engineDebug():
-	engine = WidgetEngine(tx.ivec2(800, 600), tx.RectWidgetHLayout, tx.theme)
+	engine = WidgetEngine(src.ivec2(800, 600), src.RectWidgetHLayout, src.theme)
 	base = engine.base()
-	canvasw = base.addWidget(tx.LinearLayoutAttribute(), tx.CanvasWidget)
+	canvasw = base.addWidget(src.LinearLayoutAttribute(), src.CanvasWidget)
 
 	base.activateLayout()
 
@@ -81,11 +81,11 @@ def engineDebug():
 	def render():
 		engine.render()
 
-	framework = tx.Framework(update, render)
+	framework = src.Framework(update, render)
 	framework.run()
 
 def appDebug():
-	engine = WidgetEngine(tx.ivec2(1600, 900), tx.ApplicationWidget, tx.theme)
+	engine = WidgetEngine(src.ivec2(1600, 900), src.ApplicationWidget, src.theme)
 
 	engine.base().activateLayout()
 
@@ -94,7 +94,7 @@ def appDebug():
 	def render():
 		engine.render()
 
-	framework = tx.Framework(update, render)
+	framework = src.Framework(update, render)
 	framework.run()
 
 appDebug()
