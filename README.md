@@ -30,8 +30,8 @@ The project includes:
 ## Pre-build binary
 *The pre-build binary attached is targeting Arch Linux x86_64 (7.2.7-arch1-1).*
 **To execute:**
-1. Download and extract the release executable from github
-2. Execute directly:
+1. Download and extract the release folder from github
+2. Execute directly (ensure _internal directory is in current working directory):
    ```bash
    ./ev
    ```
