@@ -15,11 +15,14 @@ class WidgetEngine[T: src.RectWidgetBase]:
 	'''
 
 	def __init__(self, windowDimension: src.ivec2, BaseWidgetType: type[T], theme: src.WidgetTheme):
+		self.uniform.fontSize = self.uniform.font.findFontSizeViaHeight(self.uniform.unit)
+		
 		self.screen = pygame.display.set_mode((windowDimension.x, windowDimension.y))
 		self.baseWidget = BaseWidgetType(
 			uniform=self.uniform,
 			dim=windowDimension, theme=theme, styleSheet = replace(theme[BaseWidgetType]))
 		self.uniform.app = weakref.proxy(self.baseWidget) # weak ptr
+		
 		
 	# ================ Contract Interface ================
 
