@@ -8,7 +8,7 @@ from .infrastructure import *
 from .engine import *
 from typing import Callable, Generic, TypeVar, Self, Any, ClassVar, TYPE_CHECKING
 from pygame import draw
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, replace, InitVar
 from collections import deque
 from enum import Enum, auto
 
@@ -19,20 +19,6 @@ class Events:
 	MouseLeave: int = pygame.event.custom_type()
 
 DefaultColor = Magenta
-
-# ################ Font ################
-
-@dataclass(slots=True)
-class FontManager:
-	data: dict[int, pygame.Font] = field(default_factory=dict[int, pygame.Font])
-
-	def addFont(self, fontSize: int):
-		self.data[fontSize] = pygame.font.SysFont(None, fontSize)
-
-	# supports lazy loading
-	def font(self, fontSize: int) -> pygame.Font:
-		if (fontSize not in self.data): self.addFont(fontSize)
-		return self.data[fontSize]
 
 # ################ Globals ################
 
@@ -52,6 +38,9 @@ class Global:
 	engineState: list[EngineState] = field(default_factory=lambda: [EngineState.Normal])
 	editState: EditState = EditState.Nothing
 	app: ApplicationWidget | None = None # ApplicationWidget
+	redraw: bool = False # redraw the entire UI
+	unit: int = 32 # unit dictating the size of all widgets
+	fontSize: int = 0
 
 # ################ Widget Basics ################
 '''
@@ -71,6 +60,9 @@ requires (Widget w) {
 
 	w.handleEvent() # handle an event; return whether the event is handled
 	# Must call RectWidgetBase.handleEvent()
+
+	w.activateLayout()
+	w.reportHeight()
 }
 '''
 
@@ -98,7 +90,9 @@ class WidgetBase:
 			w.update()
 
 	def render(self, screen: pygame.Surface):
-		if (self.diff or (self.overlay is not None and self.overlay.diff)):
+		if (self.diff or
+		    (self.overlay is not None and self.overlay.diff) or
+			self.uniform.redraw):
 			self.draw(screen)
 		else:
 			for w in self.widgets:
@@ -106,7 +100,8 @@ class WidgetBase:
 
 	def draw(self, screen: pygame.Surface):
 		for w in self.widgets:
-			w.draw(screen)
+			if (w.visible()): w.draw(screen)
+		self.diff = False
 
 	# ================ Public Interface ================
 	'''
@@ -135,6 +130,10 @@ class WidgetBase:
 class RectWidgetBase(WidgetBase):
 	# ================ Contract Interface ================
 
+	def render(self, screen):
+		if (not self.visible()): return
+		return super().render(screen)
+
 	def draw(self, screen: pygame.Surface):
 		draw.rect(screen,
 		          self.state.colorOverride if self.state.colorOverride is not None else
@@ -150,6 +149,8 @@ class RectWidgetBase(WidgetBase):
 		#for w in self.widgets: tryCall(w, "activateLayout")
 		for w in self.widgets: w.activateLayout()
 		self.diff = True
+
+	def reportHeight(self): return 0
 
 	# ================ Public Interface ================
 
@@ -174,6 +175,10 @@ class RectWidgetBase(WidgetBase):
 		if (hasattr(self.parent, 'solver') and isinstance(self.parent.solver, LinearLayoutSolver)):
 			return self.parent.solver.widgetAttribs[self.id].visible
 		return True
+
+	def move(self, delta: ivec2):
+		self.pos += delta
+		for w in self.widgets: w.move(delta)
 		
 	# ================ Geometry ================
 
@@ -237,7 +242,7 @@ class RectWidgetBase(WidgetBase):
 		for w in self.widgets:
 			# if (issubclass(type(w), RectWidgetBase) and
 			# 	inRange(makeRect(w.pos, w.dim), pos)): return w
-			if (inRange(makeRect(w.pos, w.dim), pos)): return w
+			if (inRange(makeRect(w.pos + ivec2(w.styleSheet.margin), w.dim - ivec2(w.styleSheet.margin) * 2), pos)): return w
 		return self
 
 	def subWidgetHandleEvent_impl(self, event: pygame.Event, pos: ivec2) -> bool:
@@ -297,7 +302,7 @@ class LinearLayoutSolver:
 	def addAttrib(self, attrib: LinearLayoutAttribute):
 		self.widgetAttribs.append(attrib)
 
-	def solve(self, basePos, baseLength: int, modifier: Callable[[int, int, int], None]):
+	def solve(self, basePos: int, baseLength: int, modifier: Callable[[int, int, int], None]):
 		'''
 		UB if sum of absoluteProportion is bigger then 1.
 		UB if size of self.widgetAttribs mismatches size of parent widget array
@@ -308,7 +313,7 @@ class LinearLayoutSolver:
 		absoluteConsumption: int = sum(i.proportion for i in self.widgetAttribs if i.visible and i.absolute) * baseLength
 		unit: float = (baseLength - absoluteConsumption) / masterProportion if masterProportion > 0 else 0
 		
-		acc: float = basePos
+		acc: float = float(basePos)
 		orderIndexArray = sorted(range(len(self.widgetAttribs)), key = lambda i: self.widgetAttribs[i].order)
 		for i in orderIndexArray:
 			if (not self.widgetAttribs[i].visible): continue
@@ -316,10 +321,17 @@ class LinearLayoutSolver:
 			modifier(i, int(round(acc)), int(math.floor(length)))
 			acc += length
 
+	def activateSubLayout(self, widgets: list[RectWidgetBase]):
+		for i, w in enumerate(widgets):
+			if (self.widgetAttribs[i].visible): w.activateLayout()
+
 	# ================ State ================
 	
 	widgetAttribs: list[LinearLayoutAttribute] = field(default_factory=list)
 
+# ################ Layout ################
+
+# ================ Linear Layout ================
 # Horizontal Layout
 @dataclass(slots = True)
 class RectWidgetHLayout(RectWidgetBase):
@@ -339,7 +351,7 @@ class RectWidgetHLayout(RectWidgetBase):
 			w.dim.y = self.dim.y
 			w.pos.y = self.pos.y
 		self.solver.solve(self.pos.x, self.dim.x, self.modifier_impl)
-		super().activateLayout()
+		self.solver.activateSubLayout(self.widgets)
 
 # Vertical Layout
 @dataclass(slots = True)
@@ -360,8 +372,111 @@ class RectWidgetVLayout(RectWidgetBase):
 			w.dim.x = self.dim.x
 			w.pos.x = self.pos.x
 		self.solver.solve(self.pos.y, self.dim.y, self.modifier_impl)
-		super().activateLayout()
+		self.solver.activateSubLayout(self.widgets)
 
+# ================ United Layout ================
+'''
+Positions in Widgets managed by United Layout has the exception of
+being relative to the parent widget, instead of absolute position.
+Therefore all widgets using United Layout must only interact with
+it's parent, and can only be owned by it's parent.
+'''
+
+@dataclass(slots=True)
+class UnitedLinearLayoutAttribute:
+	# the index of the widget in the layout;
+	# positive for start from left; negative for start from right
+	order: int = -1
+	visible: bool = True
+
+@dataclass(slots=True)
+class UnitedLinearLayoutSolver:
+
+	# ================ Public Interface ================
+
+	def addAttrib(self, attrib: UnitedLinearLayoutAttribute):
+		self.widgetAttribs.append(attrib)
+
+	def solve(self, basePos: int, baseLength: int, unit: int, getter: Callable[[int], int], modifier: Callable[[int, int, int], None]):
+		'''
+		UB if size of self.widgetAttribs mismatches size of parent widget array
+		Strict exclusivity is not guaranteed.
+
+		parameter `modifier` will be called with arguments (index, pos, length) aka (index, x, width) / (index, y, height)
+		'''
+		orderIndexArray = sorted(range(len(self.widgetAttribs)), key = lambda i: self.widgetAttribs[i].order)
+		positiveBegin: int = 0
+		while (positiveBegin < len(self.widgetAttribs) and self.widgetAttribs[orderIndexArray[positiveBegin]].order < 0): positiveBegin += 1
+
+		# negatives
+		nacc: int = basePos + baseLength
+		for i in range(positiveBegin):
+			index = positiveBegin - i - 1
+			if (not self.widgetAttribs[orderIndexArray[index]].visible): continue
+			adv = getter(orderIndexArray[index]) * unit # advancement
+			nacc -= adv
+			modifier(orderIndexArray[index], nacc, adv)
+
+		# positives
+		pacc: int = basePos
+		for i in range(positiveBegin, len(self.widgetAttribs)):
+			if (not self.widgetAttribs[orderIndexArray[i]].visible): continue
+			adv = getter(orderIndexArray[i]) * unit # advancement
+			modifier(orderIndexArray[i], pacc, adv)
+			pacc += adv
+
+	def findMinLength(self, getter: Callable[[int], int], unit: int):
+		return sum(getter(i) * w.visible for i, w in enumerate(self.widgetAttribs)) * unit
+
+	def activateSubLayout(self, widgets: list[RectWidgetBase]):
+		for i, w in enumerate(widgets):
+			if (self.widgetAttribs[i].visible): w.activateLayout()
+
+
+	# ================ State ================
+	
+	widgetAttribs: list[UnitedLinearLayoutAttribute] = field(default_factory=list)
+
+# Vertical Layout
+@dataclass(slots = True)
+class RectWidgetUnitedVLayout(RectWidgetBase):
+	solver: UnitedLinearLayoutSolver = field(default_factory=UnitedLinearLayoutSolver)
+
+	def modifier_impl(self, i: int, y: int, h: int):
+		self.widgets[i].pos.y = y
+		self.widgets[i].dim.y = h
+	def getter_impl(self, i: int) -> int:
+		return self.widgets[i].reportHeight()
+
+	def addWidget[T: RectWidgetBase](self, layoutAttrib: UnitedLinearLayoutAttribute, widgetType: type[T], **arg) -> T:
+		self.solver.addAttrib(layoutAttrib)
+		return super().addWidget(widgetType, **arg)
+
+	def activateLayout(self):
+		'''recursive'''
+		for w in self.widgets:
+			w.dim.x = self.dim.x
+			w.pos.x = self.pos.x
+		self.solver.activateSubLayout(self.widgets)
+		self.dim.y = self.solver.findMinLength(self.getter_impl, self.uniform.unit)
+		self.solver.solve(self.pos.y, self.dim.y, self.uniform.unit, self.getter_impl, self.modifier_impl)
+
+	def reportHeight(self): return sum(w.reportHeight() for w in self.widgets)
+
+
+# Vertical Layout
+@dataclass(slots = True)
+class RectWidgetRigidUnitedVLayout(RectWidgetUnitedVLayout):
+	def activateLayout(self):
+		'''recursive'''
+		for w in self.widgets:
+			w.dim.x = self.dim.x
+			w.pos.x = self.pos.x
+		self.solver.activateSubLayout(self.widgets)
+		self.solver.solve(self.pos.y, self.solver.findMinLength(self.getter_impl, self.uniform.unit),
+		                  self.uniform.unit, self.getter_impl, self.modifier_impl)
+
+# im not making h layout because lazyness and i don't need it so screw it
 
 # ################ Overlay ################
 '''
@@ -404,13 +519,16 @@ class LabelOverlay(OverlayBase):
 		if (self.texture is None): return
 		screen.blit(self.texture,
 		            dest=(parent.pos.x + self.styleSheet.margin,
-		                  parent.pos.y + self.styleSheet.margin))
+		                  parent.pos.y + (parent.dim.y - self.styleSheet.margin * 2 - self.texture.get_height()) // 2 + self.styleSheet.margin))
+		self.diff = False
 
 	# ================ Public Interface ================
 	
-	def setText(self, text: str):
-		self.texture = self.font_impl(self.styleSheet.fontSize).render(
-			text, True, self.styleSheet.textColor)
+	def setText(self, text: str, width: int = 0) -> int:
+		self.texture, height = self.uniform.font.render(
+			text, self.styleSheet.fontSize, self.styleSheet.textColor, width)
+		self.diff = True
+		return height
 
 	# ================ Style ================
 
@@ -434,11 +552,13 @@ class IconOverlay(OverlayBase):
 		screen.blit(self.texture,
 		            dest=(parent.pos.x + self.styleSheet.margin,
 		                  parent.pos.y + self.styleSheet.margin))
+		self.diff = False
 
 	# ================ Public Interface ================
 	
 	def setImage(self, texture: pygame.Surface):
 		self.texture = texture
+		self.diff = True
 
 # ################ Input Handler ################
 
@@ -600,6 +720,10 @@ class SliderWidgetBase(RectWidgetBase):
 
 	dragger: DragWidget | None = None
 
+	def draw(self, screen):
+		pygame.draw.rect(screen, self.styleSheet.backgroundEmptyColor, makeRect(self.pos, self.dim))
+		return super().draw(screen)
+
 	def setValue(self, value: float):
 		self.value = value
 		pos = self.pos[self.Axis] + (self.dim[self.Axis] - self.dragger.dim[self.Axis]) * value
@@ -624,6 +748,7 @@ class SliderWidgetBase(RectWidgetBase):
 		if (super().handleEvent(event)): return True
 		match (event.type):
 			case pygame.MOUSEBUTTONDOWN:
+				if (event.button != 1): return False
 				self.dragger.pos[self.Axis] = event.pos[self.Axis] - self.dragger.dim[self.Axis] / 2
 				self.dragger.handleEvent(event)
 				self.handleDrag_impl()
@@ -631,7 +756,7 @@ class SliderWidgetBase(RectWidgetBase):
 				return True
 
 	def activateLayout(self):
-		if (self.dragger is not None): return
+		if (self.dragger is not None or self.dim.y == 0 or self.dim.x == 0): return
 		margin: int = self.styleSheet.draggerMargin + self.styleSheet.margin
 		self.dragger = self.addWidget(
 			DragWidget,
@@ -652,6 +777,7 @@ class SliderWidgetBase(RectWidgetBase):
 	@dataclass(slots=True)
 	class StyleSheet:
 		backgroundColor: Color = DefaultColor
+		backgroundEmptyColor: Color = DefaultColor
 		hoverColor: Color = DefaultColor
 		draggerNormalColor: Color = DefaultColor
 		draggerHoverColor: Color = DefaultColor
@@ -677,15 +803,15 @@ class LabelWidget(RectWidgetBase):
 		self.setOverlay(LabelOverlay)
 
 	def activateLayout(self):
-		self.overlay.setText(self.text)
+		self.overlay.setText(self.text, self.dim.x)
 	
 	# ================ Public Interface ================
 
 	text: str = ""
 
-	def setText(self, text: str):
-		self.text = text
-		self.activateLayout()
+	def setText(self, text: str | None = None) -> int:
+		if text is not None: self.text = text
+		return self.overlay.setText(self.text, self.dim.x)
 
 @dataclass(slots=True)
 class IconWidget(RectWidgetBase):
