@@ -142,7 +142,7 @@ class RectWidgetBase(WidgetBase):
 				  self.styleSheet.hoverColor if self.state.hover else self.styleSheet.backgroundColor,
 		          rect, border_radius=self.styleSheet.roundCornerRadius)
 		if (self.styleSheet.borderWidth != 0):
-			draw.rect(screen, self.styleSheet.borderColor, rect,
+			draw.rect(screen, self.styleSheet.hoverBorderColor if self.state.hover else self.styleSheet.borderColor, rect,
 			          width=self.styleSheet.borderWidth,
 					  border_radius=self.styleSheet.roundCornerRadius)
 		tryCall(self.overlay, "draw", screen, self)
@@ -218,6 +218,7 @@ class RectWidgetBase(WidgetBase):
 		margin: int = 0
 		borderWidth: int = 0
 		borderColor: Color = DefaultColor
+		hoverBorderColor: Color = DefaultColor
 
 	theme: WidgetTheme | None = None
 	styleSheet: StyleSheet = field(default_factory=StyleSheet)
@@ -550,13 +551,26 @@ class LabelOverlay(OverlayBase):
 	
 	def draw(self, screen: pygame.Surface, parent: RectWidgetBase):
 		if (self.texture is None): return
-		screen.blit(self.texture,
-		            dest=(parent.pos.x + self.styleSheet.margin,
-		                  parent.pos.y + (parent.dim.y - self.styleSheet.margin * 2 - self.texture.get_height()) // 2 + self.styleSheet.margin))
-		self.diff = False
+		if (self.texture.get_width() >
+		    parent.dim.x - (self.styleSheet.margin + parent.styleSheet.margin) * 2 - 
+			self.styleSheet.indentation):
+			prevClip = screen.get_clip()
+			screen.set_clip(makeMarginedRect(parent.pos, parent.dim, parent.styleSheet.margin + self.styleSheet.margin))
 
-	# ================ Public Interface ================
+			screen.blit(self.texture,
+			            dest=(parent.pos.x + parent.dim.x - self.styleSheet.margin - self.styleSheet.indentation - self.texture.get_width(),
+			                  parent.pos.y + (parent.dim.y - self.styleSheet.margin * 2 -
+			                                  self.texture.get_height()) // 2 + self.styleSheet.margin))			
+			screen.set_clip(prevClip)
+		else :
+			screen.blit(self.texture,
+			            dest=(parent.pos.x + self.styleSheet.margin + self.styleSheet.indentation,
+			                  parent.pos.y + (parent.dim.y - self.styleSheet.margin * 2 -
+			                                  self.texture.get_height()) // 2 + self.styleSheet.margin))
+		self.diff = False
 	
+	# ================ Public Interface ================
+
 	def setText(self, text: str, width: int = 0) -> int:
 		self.texture, height = self.uniform.font.render(
 			text, self.styleSheet.fontSize, self.styleSheet.textColor, width)
@@ -569,6 +583,7 @@ class LabelOverlay(OverlayBase):
 	class StyleSheet(OverlayBase.StyleSheet):
 		textColor: Color = DefaultColor
 		fontSize: int = 48
+		indentation: int = 0
 	styleSheet: StyleSheet = field(default_factory=StyleSheet)
 
 	def font_impl(self, fontSize):
@@ -861,3 +876,80 @@ class IconWidget(RectWidgetBase):
 	def setImage(self, path: str):
 		self.source = pygame.image.load(path).convert_alpha()
 		self.activateLayout()
+
+@dataclass(slots=True)
+class LineEditWidget(RectWidgetBase):
+	text: str = ""
+	cursor: int = 0
+
+	# ================ Contract Interface ================
+
+	def draw(self, screen):
+		super().draw(screen)
+
+		# draw cursor
+		if (not self.state.hover): return
+		pygame.draw.rect(screen, self.styleSheet.cursorColor, makeRect(
+			self.pos + ivec2(
+				min(self.dim.x - self.styleSheet.textIndentation, self.styleSheet.textIndentation + 
+				self.uniform.font.findWidth(self.text[:self.cursor], self.overlay.styleSheet.fontSize)),
+				int(self.styleSheet.margin * 1.5)),
+			ivec2(self.styleSheet.cursorWidth, self.dim.y - 3 * self.styleSheet.margin)
+		))
+
+	def __post_init__(self):
+		label = self.setOverlay(LabelOverlay)
+		label.styleSheet.fontSize = int(self.uniform.fontSize * 0.6)
+		label.styleSheet.indentation = self.styleSheet.textIndentation
+		label.styleSheet.textColor = self.styleSheet.textColor
+
+	def handleEvent(self, event):
+		if (super().handleEvent(event)): return True
+
+		match (event.type):
+			case pygame.MOUSEBUTTONDOWN:
+				if (event.button != 1): return False
+				if (inRange(makeRect(self.pos, self.dim), ivec2.fromTuple(event.pos))):
+					self.enterFocus()
+				else: self.exit_impl()
+			case pygame.TEXTINPUT:
+				if (not (self.uniform.widgetState == WidgetState.Focused) or
+				    not (self.uniform.focusWidget is self)): return False
+				self.text = self.text[:self.cursor] + event.text + self.text[self.cursor:]
+				self.cursor += 1
+				self.updateText_impl()
+			case pygame.KEYDOWN:
+				match (event.key):
+					case pygame.K_ESCAPE:
+						self.exit_impl()
+					case pygame.K_BACKSPACE:
+						if (self.cursor == 0): return False
+						self.text = self.text[:self.cursor - 1] + self.text[self.cursor:]
+						self.cursor -= 1
+						self.updateText_impl()
+					case pygame.K_DELETE:
+						if (self.cursor == len(self.text)): return False
+						self.text = self.text[:self.cursor] + self.text[self.cursor + 1:]
+						self.updateText_impl()
+					case pygame.K_LEFT:
+						self.cursor = max(0, self.cursor - 1)
+						self.diff = True
+					case pygame.K_RIGHT:
+						self.cursor = min(len(self.text), self.cursor + 1)
+						self.diff = True
+
+	def updateText_impl(self):
+		self.overlay.setText(self.text)
+
+	def exit_impl(self):
+		self.exitFocus()
+
+	# ================ Style ================
+
+	@dataclass(slots=True)
+	class StyleSheet(RectWidgetBase.StyleSheet):
+		textIndentation: int = 0
+		cursorWidth: int = 2
+		cursorColor: Color = DefaultColor
+		textColor: Color = DefaultColor
+	styleSheet: StyleSheet = field(default_factory=StyleSheet)

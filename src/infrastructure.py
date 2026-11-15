@@ -140,3 +140,8 @@ class FontManager:
 			res.blit(self.renderSingle_impl(s, fontSize, color), (0, pos))
 			pos += self.findHeight(fontSize)
 		return (res, len(source))
+
+# ################ Utilities ################
+
+def makeMarginedRect(pos: ivec2, dim: ivec2, margin: int):
+	return makeRect(pos.offset(margin, margin), dim.offset(margin * -2, margin * -2))

@@ -360,8 +360,11 @@ theme: WidgetTheme = {
 	IconWidget: IconWidget.StyleSheet(
 		backgroundColor=MikuColorBegin, roundCornerRadius=20, margin=0),
 	LineEditWidget: LineEditWidget.StyleSheet(
-		backgroundColor=MikuColor, roundCornerRadius=4, margin=5,
-		textIndentation=10, borderWidth=1, borderColor=White),
+		backgroundColor=(0x45, 0x46, 0x46), hoverColor=(0x15, 0x16, 0x16),
+		borderWidth=1, borderColor=(0x7e, 0x7e, 0x7f), hoverBorderColor=(0xae, 0xae, 0xaf),
+		roundCornerRadius=4, margin=4,
+		textIndentation=10, textColor=White,
+		cursorColor=White, cursorWidth=2),
 
 	CanvasWidget: CanvasWidget.StyleSheet(
 		backgroundColor=(0x2e, 0x2e, 0x2f), hoverColor=(0x2e, 0x2e, 0x2f),
