@@ -361,7 +361,7 @@ theme: WidgetTheme = {
 		backgroundColor=MikuColorBegin, roundCornerRadius=20, margin=0),
 	LineEditWidget: LineEditWidget.StyleSheet(
 		backgroundColor=MikuColor, roundCornerRadius=4, margin=5,
-		textIndentation=10),
+		textIndentation=10, borderWidth=1, borderColor=White),
 
 	CanvasWidget: CanvasWidget.StyleSheet(
 		backgroundColor=(0x2e, 0x2e, 0x2f), hoverColor=(0x2e, 0x2e, 0x2f),

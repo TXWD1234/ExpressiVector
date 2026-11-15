@@ -135,12 +135,16 @@ class RectWidgetBase(WidgetBase):
 		return super().render(screen)
 
 	def draw(self, screen: pygame.Surface):
+		rect = makeRect(self.pos + ivec2(self.styleSheet.margin, self.styleSheet.margin),
+						self.dim - ivec2(self.styleSheet.margin * 2, self.styleSheet.margin * 2))
 		draw.rect(screen,
 		          self.state.colorOverride if self.state.colorOverride is not None else
 				  self.styleSheet.hoverColor if self.state.hover else self.styleSheet.backgroundColor,
-		          makeRect(self.pos + ivec2(self.styleSheet.margin, self.styleSheet.margin),
-		                   self.dim - ivec2(self.styleSheet.margin * 2, self.styleSheet.margin * 2)), 0,
-		          border_radius = self.styleSheet.roundCornerRadius)
+		          rect, border_radius=self.styleSheet.roundCornerRadius)
+		if (self.styleSheet.borderWidth != 0):
+			draw.rect(screen, self.styleSheet.borderColor, rect,
+			          width=self.styleSheet.borderWidth,
+					  border_radius=self.styleSheet.roundCornerRadius)
 		tryCall(self.overlay, "draw", screen, self)
 		super().draw(screen)
 		self.diff = False
@@ -212,7 +216,8 @@ class RectWidgetBase(WidgetBase):
 		hoverColor: Color = DefaultColor
 		roundCornerRadius: int = 0
 		margin: int = 0
-		
+		borderWidth: int = 0
+		borderColor: Color = DefaultColor
 
 	theme: WidgetTheme | None = None
 	styleSheet: StyleSheet = field(default_factory=StyleSheet)
@@ -686,7 +691,7 @@ class ToggleWidget(PushButtonWidget):
 	# ================ Style ================
 
 	@dataclass(slots=True)
-	class StyleSheet:
+	class StyleSheet(PushButtonWidget.StyleSheet):
 		onColor: Color = DefaultColor
 		offColor: Color = DefaultColor
 		nodeColor: Color = DefaultColor
@@ -804,16 +809,12 @@ class SliderWidgetBase(RectWidgetBase):
 	draggerPortion: float = 0.1
 
 	@dataclass(slots=True)
-	class StyleSheet:
-		backgroundColor: Color = DefaultColor
+	class StyleSheet(RectWidgetBase.StyleSheet):
 		backgroundEmptyColor: Color = DefaultColor
-		hoverColor: Color = DefaultColor
 		draggerNormalColor: Color = DefaultColor
 		draggerHoverColor: Color = DefaultColor
 		draggerDragColor: Color = DefaultColor
 		draggerMargin: float = 0.0
-		roundCornerRadius: int = 0
-		margin: int = 0
 	styleSheet: StyleSheet = field(default_factory=StyleSheet)
 
 @dataclass(slots=True)
