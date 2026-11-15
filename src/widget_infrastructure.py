@@ -212,6 +212,7 @@ class RectWidgetBase(WidgetBase):
 		hoverColor: Color = DefaultColor
 		roundCornerRadius: int = 0
 		margin: int = 0
+		
 
 	theme: WidgetTheme | None = None
 	styleSheet: StyleSheet = field(default_factory=StyleSheet)
@@ -238,6 +239,8 @@ class RectWidgetBase(WidgetBase):
 	- Window Events: Handled directly here
 	'''
 
+	hoverWidget: RectWidgetBase | None = None
+
 	def subWidgetFindWithin_impl(self, pos: ivec2) -> RectWidgetBase:
 		for w in self.widgets:
 			# if (issubclass(type(w), RectWidgetBase) and
@@ -245,46 +248,71 @@ class RectWidgetBase(WidgetBase):
 			if (inRange(makeRect(w.pos + ivec2(w.styleSheet.margin), w.dim - ivec2(w.styleSheet.margin) * 2), pos)): return w
 		return self
 
-	def subWidgetHandleEvent_impl(self, event: pygame.Event, pos: ivec2) -> bool:
+	def subWidgetHandleCollisionEvent_impl(self, event: pygame.Event, pos: ivec2) -> bool:
 		if (len(self.widgets) == 0): return False
 		if ((w := self.subWidgetFindWithin_impl(pos)) is not self): return w.handleEvent(event)
 		return False
 
+	def subWidgetHandleEvent_impl(self, event: pygame.Event) -> bool:
+		for w in self.widgets: w.handleEvent(event)
+
 	def handleEvent(self, event: pygame.Event) -> bool:
 		match (event.type):
 			case pygame.MOUSEBUTTONDOWN | pygame.MOUSEBUTTONUP:
-				return self.subWidgetHandleEvent_impl(
+				return self.subWidgetHandleCollisionEvent_impl(
 					event, ivec2(event.pos[0], event.pos[1]))
 			case pygame.MOUSEMOTION:
 				# When received a mouse motion event, assume it's all-within
-				toPos = ivec2(event.pos[0], event.pos[1])
-				fromPos = ivec2(event.pos[0] - event.rel[0], event.pos[1] - event.rel[1])
-				toW = self.subWidgetFindWithin_impl(toPos)
-				fromW = self.subWidgetFindWithin_impl(fromPos)
-				if (fromW is toW):
-					if (fromW is not self): fromW.handleEvent(event)
-				else:
-					if (fromW is not self): fromW.handleEvent(pygame.Event(Events.MouseLeave, {"pos": fromPos, "buttons": event.buttons}))
-					if (toW   is not self): toW  .handleEvent(pygame.Event(Events.MouseEnter, {"pos": toPos,   "buttons": event.buttons}))
+				if (not self.handleMouseDisplacement(ivec2.fromTuple(event.pos)) and self.hoverWidget is not self):
+					self.hoverWidget.handleEvent(event)
 				return False
 			case Events.MouseEnter:
 				if ((sub := self.subWidgetFindWithin_impl(event.pos)) is not self):
 					sub.handleEvent(event)
+					self.hoverWidget = sub
 				self.state.hover = True
 				self.diff = True
 				return False
 			case Events.MouseLeave:
-				if ((sub := self.subWidgetFindWithin_impl(event.pos)) is not self):
-					sub.handleEvent(event)
+				if (self.hoverWidget is not None and self.hoverWidget is not self):
+					self.hoverWidget.handleEvent(event)
+					self.hoverWidget = None
 				self.state.hover = False
 				self.diff = True
 				return False
-			case pygame.KEYDOWN | pygame.KEYUP:
-				return False
-			case pygame.TEXTINPUT:
-				return False
 			case _:
-				return False
+				return self.subWidgetHandleEvent_impl(event)
+
+	def handleMouseDisplacement(self, pos: ivec2) -> bool:
+		curW = self.subWidgetFindWithin_impl(pos)
+		fromW = self.hoverWidget
+		if (fromW is curW): return False
+		else:
+			if (fromW is not self): tryCall(fromW, "handleEvent", pygame.Event(Events.MouseLeave))
+			if (curW   is not self):             curW.handleEvent(pygame.Event(Events.MouseEnter, {"pos": pos}))
+			self.hoverWidget = curW
+			return True
+
+	def subWidgetHandleMouseDisplacement(self, pos: ivec2):
+		for w in self.widgets:
+			if (not w.handleMouseDisplacement(pos)):
+				w.subWidgetHandleMouseDisplacement(pos)
+
+	# ================ Internal Utility ================
+
+	def enterFocus(self):
+		self.uniform.widgetState = WidgetState.Focused
+		self.uniform.focusWidget = self
+
+	def exitFocus(self):
+		self.uniform.widgetState = WidgetState.Normal
+		self.uniform.focusWidget = None
+		self.refreshHover(ivec2.fromTuple(pygame.mouse.get_pos()))
+
+	def refreshHover(self, pos: ivec2):
+		self.state.hover = inRange(makeRect(self.pos, self.dim), pos)
+		self.diff = True
+		
 
 @dataclass(slots=True)
 class LinearLayoutAttribute:
@@ -681,17 +709,17 @@ class DragWidget(RectWidgetBase):
 		if (not self.dragging and super().handleEvent(event)): return True
 		match (event.type):
 			case pygame.MOUSEBUTTONDOWN:
-				self.uniform.widgetState = WidgetState.Focused
-				self.uniform.focusWidget = self
+				if (event.button != 1): return False
+				self.enterFocus()
 				self.state.colorOverride = self.styleSheet.dragColor
 				self.dragging = True
 				return True
 			case pygame.MOUSEBUTTONUP:
-				self.uniform.widgetState = WidgetState.Normal
-				self.uniform.focusWidget = None
+				if (event.button != 1): return False
+				self.exitFocus()
 				self.state.colorOverride = None
 				self.dragging = False
-				self.state.hover = inRange(makeRect(self.pos, self.dim), ivec2(event.pos[0], event.pos[1]))
+				self.refreshHover(ivec2(event.pos[0], event.pos[1]))
 				self.diff = True
 				return True
 			case pygame.MOUSEMOTION:
@@ -703,6 +731,7 @@ class DragWidget(RectWidgetBase):
 					return True
 			case _:
 				return False
+		return False
 
 	# ================ Style ================
 

@@ -206,13 +206,16 @@ class ConfigPanel(RectWidgetRigidUnitedVLayout):
 					case 4:  # Scroll Up
 						diff: int = self.pos.y - min(w.pos.y for w in self.widgets if w.visible())
 						if (diff > 0):
-						#if not (max(w.pos.y + w.dim.y for w in self.widgets if w.visible()) >= self.pos.y + self.dim.y):
-							for w in self.widgets: w.move(ivec2(0, min(self.styleSheet.scrollVel, diff)))
+							for w in self.widgets:
+								w.move(ivec2(0, min(self.styleSheet.scrollVel, diff)))
+								w.subWidgetHandleMouseDisplacement(ivec2.fromTuple(pygame.mouse.get_pos()))
 							self.diff = True
 					case 5:  # Scroll Down
 						diff: int = max(w.pos.y + w.dim.y for w in self.widgets if w.visible()) - (self.pos.y + self.dim.y)
 						if (diff > 0):
-							for w in self.widgets: w.move(ivec2(0, -min(self.styleSheet.scrollVel, diff)))
+							for w in self.widgets:
+								w.move(ivec2(0, -min(self.styleSheet.scrollVel, diff)))
+								w.subWidgetHandleMouseDisplacement(ivec2.fromTuple(pygame.mouse.get_pos()))
 							self.diff = True
 
 	@dataclass(slots=True)
@@ -222,7 +225,6 @@ class ConfigPanel(RectWidgetRigidUnitedVLayout):
 
 @dataclass(slots=True)
 class ConfigWidget(RectWidgetBase):
-	
 	pass
 
 # ################ Presets ################
@@ -252,7 +254,7 @@ def configSectionColor(section: ConfigSection):
 
 def configSectionStrokeSize(section: ConfigSection):
 	sectionAdd(section, text="Width", entryWidgetType=SliderHWidget, entryWidgetArgs={})
-	sectionAdd(section, text="Height", entryWidgetType=SliderHWidget, entryWidgetArgs={})
+	sectionAdd(section, text="Height", entryWidgetType=LineEditWidget, entryWidgetArgs={})
 	sectionAdd(section, text="Height", entryWidgetType=SliderHWidget, entryWidgetArgs={})
 	sectionAdd(section, text="Height", entryWidgetType=SliderHWidget, entryWidgetArgs={})
 	sectionAdd(section, text="Height", entryWidgetType=SliderHWidget, entryWidgetArgs={})
@@ -357,6 +359,9 @@ theme: WidgetTheme = {
 		margin=0),
 	IconWidget: IconWidget.StyleSheet(
 		backgroundColor=MikuColorBegin, roundCornerRadius=20, margin=0),
+	LineEditWidget: LineEditWidget.StyleSheet(
+		backgroundColor=MikuColor, roundCornerRadius=4, margin=5,
+		textIndentation=10),
 
 	CanvasWidget: CanvasWidget.StyleSheet(
 		backgroundColor=(0x2e, 0x2e, 0x2f), hoverColor=(0x2e, 0x2e, 0x2f),

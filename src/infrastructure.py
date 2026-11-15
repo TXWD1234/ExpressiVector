@@ -34,6 +34,7 @@ def tryCall(object, name: str, *args, **kwargs):
 	if (object is not None and hasattr(object, name) and
 	    is_invocable((method := getattr(object, name)), *args, **kwargs)):
 		return method(*args, **kwargs)
+	#else: print(f"Failed to call {name}")
 
 def optionalCall(func, arg):
 	if (is_invocable(func, arg)):
