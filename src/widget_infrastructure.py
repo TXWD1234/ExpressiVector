@@ -778,7 +778,11 @@ class SliderWidgetBase(RectWidgetBase):
 		pos = self.pos[self.Axis] + (self.dim[self.Axis] - self.dragger.dim[self.Axis]) * value
 		self.dragger.pos[self.Axis] = pos
 		self.diff = True
+	def getValue(self): return self.value
 
+	def valueChange_impl(self):
+		optionalCall(self.onValueChange, self)
+		
 	def handleDrag_impl(self):
 		self.dragger.pos[not self.Axis] = self.pos[not self.Axis]
 		self.dragger.pos[self.Axis] = clamp(
@@ -789,7 +793,7 @@ class SliderWidgetBase(RectWidgetBase):
 			self.dim[self.Axis] - self.dragger.dim[self.Axis])
 		self.diff = True
 
-		optionalCall(self.onValueChange, self)
+		self.valueChange_impl()
 
 	# ================ Contract Interface ================
 
@@ -835,10 +839,23 @@ class SliderWidgetBase(RectWidgetBase):
 @dataclass(slots=True)
 class SliderHWidget(SliderWidgetBase):
     Axis: ClassVar[int] = 0
-
 @dataclass(slots=True)
 class SliderVWidget(SliderWidgetBase):
     Axis: ClassVar[int] = 1
+
+class IntegerSliderWidgetBase(SliderWidgetBase):
+	scope: tuple[int, int] = (0, 1)
+
+	def getValue(self):
+		return self.scope[0] + super().getValue() * (self.scope[0] - self.scope[1])
+
+@dataclass(slots=True)
+class IntegerSliderHWidget(IntegerSliderWidgetBase):
+    Axis: ClassVar[int] = 0
+@dataclass(slots=True)
+class IntegerSliderVWidget(IntegerSliderWidgetBase):
+    Axis: ClassVar[int] = 1
+
 
 @dataclass(slots=True)
 class LabelWidget(RectWidgetBase):
@@ -882,6 +899,9 @@ class LineEditWidget(RectWidgetBase):
 	text: str = ""
 	cursor: int = 0
 
+	onEdit: Callable[[], None] | Callable[[Self], None] = lambda: None
+	onEditComplete: Callable[[], None] | Callable[[Self], None] = lambda: None
+
 	# ================ Contract Interface ================
 
 	def draw(self, screen):
@@ -902,6 +922,7 @@ class LineEditWidget(RectWidgetBase):
 		label.styleSheet.fontSize = int(self.uniform.fontSize * 0.6)
 		label.styleSheet.indentation = self.styleSheet.textIndentation
 		label.styleSheet.textColor = self.styleSheet.textColor
+		label.setText(self.text)
 
 	def handleEvent(self, event):
 		if (super().handleEvent(event)): return True
@@ -911,6 +932,8 @@ class LineEditWidget(RectWidgetBase):
 				if (event.button != 1): return False
 				if (inRange(makeRect(self.pos, self.dim), ivec2.fromTuple(event.pos))):
 					self.enterFocus()
+					self.state.colorOverride = self.styleSheet.editColor
+					self.diff = True
 				else: self.exit_impl()
 			case pygame.TEXTINPUT:
 				if (not (self.uniform.widgetState == WidgetState.Focused) or
@@ -920,7 +943,7 @@ class LineEditWidget(RectWidgetBase):
 				self.updateText_impl()
 			case pygame.KEYDOWN:
 				match (event.key):
-					case pygame.K_ESCAPE:
+					case pygame.K_ESCAPE | pygame.K_RETURN:
 						self.exit_impl()
 					case pygame.K_BACKSPACE:
 						if (self.cursor == 0): return False
@@ -939,17 +962,74 @@ class LineEditWidget(RectWidgetBase):
 						self.diff = True
 
 	def updateText_impl(self):
+		optionalCall(self.onEdit, self)
 		self.overlay.setText(self.text)
 
 	def exit_impl(self):
+		self.state.colorOverride = None
+		optionalCall(self.onEditComplete, self)
 		self.exitFocus()
 
 	# ================ Style ================
 
 	@dataclass(slots=True)
 	class StyleSheet(RectWidgetBase.StyleSheet):
+		editColor: Color = DefaultColor
 		textIndentation: int = 0
 		cursorWidth: int = 2
 		cursorColor: Color = DefaultColor
 		textColor: Color = DefaultColor
 	styleSheet: StyleSheet = field(default_factory=StyleSheet)
+
+@dataclass(slots=True)
+class IntegerLineEditWidget(LineEditWidget):
+	text: str = "0"
+	cursor: int = 1
+
+	value: int = 0
+	scope: tuple[int, int] | None = None
+
+	# ================ Logical Implementation ================
+
+	def regulateText_impl(self) -> bool:
+		try:
+			self.value = int(self.text)
+		except ValueError:
+			return False
+
+		if (self.scope is not None):
+			old = self.value
+			self.value = clamp(self.value, self.scope[0], self.scope[1])
+			if (old != self.value):
+				self.text = str(self.value)
+				self.updateText_impl()
+		return True
+
+	lastText: str = "0"
+	def exit_impl(self):
+		if (self.regulateText_impl()):
+			optionalCall(self.onEditComplete, self)
+		else: self.text = self.lastText
+		self.lastText = self.text
+		self.updateText_impl()
+		self.state.colorOverride = None
+		self.exitFocus()
+
+
+
+
+
+# @dataclass(slots=True)
+# class NumFieldWidget(RectWidgetHLayout):
+# 	edit: LineEditWidget
+# 	slider: SliderHWidget
+
+# 	def __post_init__(self):
+# 		self.edit   = self.addWidget(LinearLayoutAttribute(0, self.styleSheet.editPortion),  LineEditWidget)
+# 		self.slider = self.addWidget(LinearLayoutAttribute(1, self.styleSheet.sliderPortion), SliderHWidget)
+
+# 	@dataclass(slots=True)
+# 	class StyleSheet(RectWidgetHLayout.StyleSheet):
+# 		editPortion: int = 1
+# 		sliderPortion: int = 1
+# 	styleSheet: StyleSheet = field(default_factory=StyleSheet)
