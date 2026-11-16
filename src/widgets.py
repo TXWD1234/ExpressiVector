@@ -13,7 +13,7 @@ deliberate presence hardcoding custom logic.
 '''
 
 # -----------------------------------------
-# ················ Sideabr ················
+# ················ Sidebar ················
 # -----------------------------------------
 
 @dataclass(slots=True)
@@ -87,19 +87,23 @@ class ConfigHEntryBase[T: RectWidgetBase](RectWidgetHLayout):
 	text: InitVar[str]
 	entryWidgetType: InitVar[type[T]]
 	entryWidgetArgs: InitVar[dict]
+	proportion: InitVar[tuple[int, int] | None ] = None
 
 	entryWidget: T | None = field(init=False, default=None)
 	labelWidget: LabelWidget | None = field(init=False, default=None)
 	oldWidth: int = 0
 	unitHeight: int = 0
 
-	def __post_init__(self, text: str, entryWidgetType: type[T], entryWidgetArgs: dict):
-		self.labelWidget = self.addWidget(LinearLayoutAttribute(), LabelWidget)
+	def __post_init__(self, text: str, entryWidgetType: type[T], entryWidgetArgs: dict,
+	                  proportion: tuple[int, int] | None = None):
+		self.labelWidget = self.addWidget(LinearLayoutAttribute(
+			proportion=proportion[0] if proportion is not None else 1), LabelWidget)
 		self.labelWidget.overlay.styleSheet.fontSize = int(self.uniform.fontSize * 0.7)
 		self.labelWidget.text = text
 
 		self.entryWidget = self.addWidget(
-			LinearLayoutAttribute(), entryWidgetType, **entryWidgetArgs)
+			LinearLayoutAttribute(proportion=proportion[1] if proportion is not None else 1),
+			entryWidgetType, **entryWidgetArgs)
 
 	# report the height of this entry in unit
 	# will be called after width is determinded
@@ -179,7 +183,7 @@ class ConfigSection(RectWidgetBase):
 class ConfigPanel(RectWidgetRigidUnitedVLayout):
 	'''
 	Container of Sections.
-	All sub widgets must be sections.
+	All sub widgets must be sections. (with exceptions)
 	'''
 
 	# ================ Contract Interface ================
@@ -227,6 +231,17 @@ class ConfigPanel(RectWidgetRigidUnitedVLayout):
 class ConfigWidget(RectWidgetBase):
 	pass
 
+# ------------------------------------------------
+# ················ Custom Widgets ················
+# ------------------------------------------------
+
+
+# ################ Color Picker ################
+
+@dataclass(slots=True)
+class ColorPickerWidget(RectWidgetBase):
+	pass
+
 # ################ Presets ################
 '''
 --- Architecture of the presets ---
@@ -241,9 +256,9 @@ must be constructed by parent.*
 # ================ Helpers ================
 
 def sectionAdd(section: ConfigSection, *args, **kwargs):
-	section.content.addWidget(
+	return section.content.addWidget(
 		UnitedLinearLayoutAttribute(), ConfigHEntryBase,
-		*args, **kwargs)
+		*args, **kwargs).entryWidget
 	
 # ================ General Presets ================
 
@@ -254,7 +269,7 @@ def configSectionColor(section: ConfigSection):
 
 def configSectionStrokeSize(section: ConfigSection):
 	sectionAdd(section, text="Width", entryWidgetType=SliderHWidget, entryWidgetArgs={})
-	sectionAdd(section, text="Height", entryWidgetType=LineEditWidget, entryWidgetArgs={})
+	sectionAdd(section, text="Height", entryWidgetType=IntegerLineEditWidget, entryWidgetArgs={"scope": (0, 100)}, proportion=(1, 2))
 	sectionAdd(section, text="Height", entryWidgetType=SliderHWidget, entryWidgetArgs={})
 	sectionAdd(section, text="Height", entryWidgetType=SliderHWidget, entryWidgetArgs={})
 	sectionAdd(section, text="Height", entryWidgetType=SliderHWidget, entryWidgetArgs={})
@@ -293,8 +308,6 @@ def configSectionStrokeSize(section: ConfigSection):
 	sectionAdd(section, text="Height", entryWidgetType=SliderHWidget, entryWidgetArgs={})
 	sectionAdd(section, text="Height", entryWidgetType=SliderHWidget, entryWidgetArgs={})
 	sectionAdd(section, text="Height", entryWidgetType=SliderHWidget, entryWidgetArgs={})
-
-
 
 # ---------------------------------------------
 # ················ Application ················
@@ -360,7 +373,13 @@ theme: WidgetTheme = {
 	IconWidget: IconWidget.StyleSheet(
 		backgroundColor=MikuColorBegin, roundCornerRadius=20, margin=0),
 	LineEditWidget: LineEditWidget.StyleSheet(
-		backgroundColor=(0x45, 0x46, 0x46), hoverColor=(0x15, 0x16, 0x16),
+		backgroundColor=(0x45, 0x46, 0x46), hoverColor=(0x35, 0x36, 0x36), editColor=(0x15, 0x16, 0x16),
+		borderWidth=1, borderColor=(0x7e, 0x7e, 0x7f), hoverBorderColor=(0xae, 0xae, 0xaf),
+		roundCornerRadius=4, margin=4,
+		textIndentation=10, textColor=White,
+		cursorColor=White, cursorWidth=2),
+	IntegerLineEditWidget: IntegerLineEditWidget.StyleSheet(
+		backgroundColor=(0x45, 0x46, 0x46), hoverColor=(0x35, 0x36, 0x36), editColor=(0x15, 0x16, 0x16),
 		borderWidth=1, borderColor=(0x7e, 0x7e, 0x7f), hoverBorderColor=(0xae, 0xae, 0xaf),
 		roundCornerRadius=4, margin=4,
 		textIndentation=10, textColor=White,
