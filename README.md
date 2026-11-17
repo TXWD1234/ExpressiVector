@@ -11,8 +11,9 @@ The project includes:
 - Various infrastructure required to build the project, such as geometry abstractions and logical helpers
 
 # Screenshot
-![Screenshot](https://github.com/TXWD1234/ExpressiVector/raw/main/docs/readme-assets/demo-1.png)
-![Screenshot](https://github.com/TXWD1234/ExpressiVector/raw/main/docs/readme-assets/demo-2.png)
+![Screenshot](https://github.com/TXWD1234/ExpressiVector/raw/main/docs/readme-assets/demo-2-1.png)
+![Screenshot](https://github.com/TXWD1234/ExpressiVector/raw/main/docs/readme-assets/demo-1-1.png)
+![Screenshot](https://github.com/TXWD1234/ExpressiVector/raw/main/docs/readme-assets/demo-1-2.png)
 
 # Installation
 ## Execute from source

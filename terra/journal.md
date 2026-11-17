@@ -27,4 +27,12 @@ During this week, the general UI Widget System was implemented. Now all UI can b
 The Core Engine and Canvas Management of the project was also implemented.
 Other additional progress include the preliminary interface, the theme inspired by Photoshop, and the extra specialized UI widgets implemented for future usage.
 
-14 water, 6 bok choy seeds and 8 cabbage seeds
+## 2026-11-16 23:36:24:<br>Category: Development Report<br>Topic: Week 2 Development Retrospective
+In this week, massive enhancement of the UI system infrastructure, and confirmation of the application UI system was achieved.
+The UI system was heavily refactored, and numerous new widgets are added.
+Simultaneously, the main UI design of the application was settled, and mostly implemented.
+Unfortunately, however, the development couldn't finish in the planned 2 weeks, therefore one more week must be dedicated to the development of this project.
+
+
+week 3: 14 water, 6 bok choy seeds and 8 cabbage seeds
+week 4: 10 banana, 15 eggplant, 21 water
