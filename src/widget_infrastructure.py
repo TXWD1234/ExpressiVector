@@ -139,7 +139,7 @@ class RectWidgetBase(WidgetBase):
 						self.dim - ivec2(self.styleSheet.margin * 2, self.styleSheet.margin * 2))
 		draw.rect(screen,
 		          self.state.colorOverride if self.state.colorOverride is not None else
-				  self.styleSheet.hoverColor if self.state.hover else self.styleSheet.backgroundColor,
+				  (self.styleSheet.hoverColor if self.state.hover else self.styleSheet.backgroundColor),
 		          rect, border_radius=self.styleSheet.roundCornerRadius)
 		if (self.styleSheet.borderWidth != 0):
 			draw.rect(screen, self.styleSheet.hoverBorderColor if self.state.hover else self.styleSheet.borderColor, rect,
@@ -174,6 +174,7 @@ class RectWidgetBase(WidgetBase):
 		if (hasattr(self.parent, 'solver') and isinstance(self.parent.solver, LinearLayoutSolver)):
 			self.parent.solver.widgetAttribs[self.id].visible = True
 			self.parent.activateLayout()
+			self.diff = True
 
 	def visible(self) -> bool:
 		if (hasattr(self.parent, 'solver') and isinstance(self.parent.solver, LinearLayoutSolver)):
@@ -387,6 +388,9 @@ class RectWidgetHLayout(RectWidgetBase):
 		self.solver.solve(self.pos.x, self.dim.x, self.modifier_impl)
 		self.solver.activateSubLayout(self.widgets)
 
+	def draw(self, screen):
+		WidgetBase.draw(self, screen)
+
 # Vertical Layout
 @dataclass(slots = True)
 class RectWidgetVLayout(RectWidgetBase):
@@ -407,6 +411,9 @@ class RectWidgetVLayout(RectWidgetBase):
 			w.pos.x = self.pos.x
 		self.solver.solve(self.pos.y, self.dim.y, self.modifier_impl)
 		self.solver.activateSubLayout(self.widgets)
+
+	def draw(self, screen):
+		WidgetBase.draw(self, screen)
 
 # ================ United Layout ================
 '''
@@ -482,6 +489,8 @@ class RectWidgetUnitedVLayout(RectWidgetBase):
 	def getter_impl(self, i: int) -> int:
 		return self.widgets[i].reportHeight()
 
+	# ================ Contract Interface ================
+
 	def addWidget[T: RectWidgetBase](self, layoutAttrib: UnitedLinearLayoutAttribute, widgetType: type[T], **arg) -> T:
 		self.solver.addAttrib(layoutAttrib)
 		return super().addWidget(widgetType, **arg)
@@ -496,6 +505,9 @@ class RectWidgetUnitedVLayout(RectWidgetBase):
 		self.solver.solve(self.pos.y, self.dim.y, self.uniform.unit, self.getter_impl, self.modifier_impl)
 
 	def reportHeight(self): return sum(w.reportHeight() for w in self.widgets)
+
+	def draw(self, screen):
+		return WidgetBase.draw(self, screen)
 
 
 # Vertical Layout
@@ -562,9 +574,11 @@ class LabelOverlay(OverlayBase):
 			                  parent.pos.y + (parent.dim.y - self.styleSheet.margin * 2 -
 			                                  self.texture.get_height()) // 2 + self.styleSheet.margin))			
 			screen.set_clip(prevClip)
-		else :
+		else:
 			screen.blit(self.texture,
-			            dest=(parent.pos.x + self.styleSheet.margin + self.styleSheet.indentation,
+			            dest=(parent.pos.x + self.styleSheet.margin + self.styleSheet.indentation
+			                  if not self.styleSheet.center else
+			                  parent.pos.x + parent.dim.x // 2 - self.texture.get_width() // 2,
 			                  parent.pos.y + (parent.dim.y - self.styleSheet.margin * 2 -
 			                                  self.texture.get_height()) // 2 + self.styleSheet.margin))
 		self.diff = False
@@ -584,6 +598,7 @@ class LabelOverlay(OverlayBase):
 		textColor: Color = DefaultColor
 		fontSize: int = 48
 		indentation: int = 0
+		center: bool = False
 	styleSheet: StyleSheet = field(default_factory=StyleSheet)
 
 	def font_impl(self, fontSize):
@@ -647,6 +662,8 @@ class PushButtonWidget(RectWidgetBase):
 
 	onPress: Callable[[], None] | Callable[[Self], None] = lambda: None
 
+	pressing: bool = False
+
 	# ================ Contract Interface ================
 
 	def handleEvent(self, event):
@@ -655,13 +672,82 @@ class PushButtonWidget(RectWidgetBase):
 		# along with that, state is also modified
 		match (event.type):
 			case pygame.MOUSEBUTTONDOWN:
+				self.state.colorOverride = self.styleSheet.pressColor
+				self.pressing = True
+				self.diff = True
+			case pygame.MOUSEBUTTONUP:
+				if (not self.pressing): return
 				optionalCall(self.onPress, self)
+				self.state.colorOverride = None
+				self.pressing = False
+				self.diff = True
+			case Events.MouseLeave:
+				self.state.colorOverride = None
+				self.pressing = False
+				return False
 			case _:	return False
 		return True
 
 	# ================ Public Interface ================
 	
 	# ================ Style ================
+
+	@dataclass(slots=True)
+	class StyleSheet(RectWidgetBase.StyleSheet):
+		pressColor: Color = DefaultColor
+	styleSheet: StyleSheet = field(default_factory=StyleSheet)
+
+@dataclass(slots=True)
+class IconedPushButtonWidget(PushButtonWidget):
+	# ================ Contract Interface ================
+
+	def __post_init__(self):
+		self.setOverlay(IconOverlay)
+
+	def activateLayout(self):
+		self.overlay.styleSheet.margin = self.styleSheet.iconMargin + self.styleSheet.margin
+		self.overlay.setImage(pygame.transform.scale(
+			self.source, scaleToFit(
+				ivec2.fromTuple(self.source.get_size()),
+			    self.dim - ivec2(self.overlay.styleSheet.margin,
+			                     self.overlay.styleSheet.margin) * 2).toTuple()))
+
+	# ================ Public Interface ================
+
+	source: pygame.Surface | None = None
+
+	# ================ Style ================
+
+	@dataclass(slots=True)
+	class StyleSheet(PushButtonWidget.StyleSheet):
+		iconMargin: int = 0
+	styleSheet: StyleSheet = field(default_factory=StyleSheet)
+
+@dataclass(slots=True)
+class LabeledPushButtonWidget(PushButtonWidget):
+	# ================ Contract Interface ================
+
+	def __post_init__(self):
+		self.setOverlay(LabelOverlay).styleSheet.center = True
+
+	def activateLayout(self):
+		self.overlay.setText(self.text, self.dim.x)
+	
+	# ================ Style ================
+
+	@dataclass(slots=True)
+	class StyleSheet(PushButtonWidget.StyleSheet):
+		textMargin: int = 0
+	styleSheet: StyleSheet = field(default_factory=StyleSheet)
+
+	# ================ Public Interface ================
+
+	text: str = ""
+
+	def setText(self, text: str | None = None) -> int:
+		if text is not None: self.text = text
+		return self.overlay.setText(self.text, self.dim.x)
+	
 
 @dataclass(slots=True)
 class ToggleWidget(PushButtonWidget):
@@ -732,12 +818,14 @@ class DragWidget(RectWidgetBase):
 				if (event.button != 1): return False
 				self.enterFocus()
 				self.state.colorOverride = self.styleSheet.dragColor
+				optionalCall(self.onDrag, self)
 				self.dragging = True
 				return True
 			case pygame.MOUSEBUTTONUP:
 				if (event.button != 1): return False
 				self.exitFocus()
 				self.state.colorOverride = None
+				optionalCall(self.onDrag, self)
 				self.dragging = False
 				self.refreshHover(ivec2(event.pos[0], event.pos[1]))
 				self.diff = True
@@ -818,6 +906,7 @@ class SliderWidgetBase(RectWidgetBase):
 			          self.dim.y * (self.draggerPortion if self.Axis else 1) + (self.Axis) * margin * 2),
 			onDrag=self.handleDrag_impl
 		)
+		self.dragger.styleSheet.roundCornerRadius = self.styleSheet.roundCornerRadius
 		self.dragger.styleSheet.backgroundColor = self.styleSheet.draggerNormalColor
 		self.dragger.styleSheet.hoverColor = self.styleSheet.draggerHoverColor
 		self.dragger.styleSheet.dragColor = self.styleSheet.draggerDragColor
@@ -843,11 +932,15 @@ class SliderHWidget(SliderWidgetBase):
 class SliderVWidget(SliderWidgetBase):
     Axis: ClassVar[int] = 1
 
+@dataclass(slots=True)
 class IntegerSliderWidgetBase(SliderWidgetBase):
 	scope: tuple[int, int] = (0, 1)
 
+	def setValue(self, value: int):
+		super().setValue((value - self.scope[0]) / (self.scope[1] - self.scope[0]))
+
 	def getValue(self):
-		return self.scope[0] + super().getValue() * (self.scope[0] - self.scope[1])
+		return int(self.scope[0] + super().getValue() * (self.scope[1] - self.scope[0]))
 
 @dataclass(slots=True)
 class IntegerSliderHWidget(IntegerSliderWidgetBase):
@@ -899,7 +992,7 @@ class LineEditWidget(RectWidgetBase):
 	text: str = ""
 	cursor: int = 0
 
-	onEdit: Callable[[], None] | Callable[[Self], None] = lambda: None
+	onEdit:         Callable[[], None] | Callable[[Self], None] = lambda: None
 	onEditComplete: Callable[[], None] | Callable[[Self], None] = lambda: None
 
 	# ================ Contract Interface ================
@@ -924,6 +1017,8 @@ class LineEditWidget(RectWidgetBase):
 		label.styleSheet.textColor = self.styleSheet.textColor
 		label.setText(self.text)
 
+	def isEditing_impl(self):
+		return (self.uniform.widgetState == WidgetState.Focused) and (self.uniform.focusWidget is self)
 	def handleEvent(self, event):
 		if (super().handleEvent(event)): return True
 
@@ -936,12 +1031,12 @@ class LineEditWidget(RectWidgetBase):
 					self.diff = True
 				else: self.exit_impl()
 			case pygame.TEXTINPUT:
-				if (not (self.uniform.widgetState == WidgetState.Focused) or
-				    not (self.uniform.focusWidget is self)): return False
+				if (not self.isEditing_impl()): return False
 				self.text = self.text[:self.cursor] + event.text + self.text[self.cursor:]
 				self.cursor += 1
 				self.updateText_impl()
 			case pygame.KEYDOWN:
+				if (not self.isEditing_impl()): return False
 				match (event.key):
 					case pygame.K_ESCAPE | pygame.K_RETURN:
 						self.exit_impl()
@@ -989,6 +1084,14 @@ class IntegerLineEditWidget(LineEditWidget):
 	value: int = 0
 	scope: tuple[int, int] | None = None
 
+	# ================ Public Interface ================
+
+	def getValue(self): return self.value
+	def setValue(self, value: int):
+		self.value = int(value)
+		self.text = str(value)
+		self.updateText_impl()
+
 	# ================ Logical Implementation ================
 
 	def regulateText_impl(self) -> bool:
@@ -999,7 +1102,7 @@ class IntegerLineEditWidget(LineEditWidget):
 
 		if (self.scope is not None):
 			old = self.value
-			self.value = clamp(self.value, self.scope[0], self.scope[1])
+			self.value = int(clamp(self.value, self.scope[0], self.scope[1]))
 			if (old != self.value):
 				self.text = str(self.value)
 				self.updateText_impl()
@@ -1016,20 +1119,83 @@ class IntegerLineEditWidget(LineEditWidget):
 		self.exitFocus()
 
 
+@dataclass(slots=True, kw_only=True)
+class IntegerFieldWidget(RectWidgetHLayout):
+	scope: InitVar[tuple[int, int]]
+	
+	onValueChange: Callable[[], None] | Callable[[Self], None] = lambda: None
+	value: int = 0
+	
+	edit:  IntegerLineEditWidget | None = field(init=False, default=None)
+	slider: IntegerSliderHWidget | None = field(init=False, default=None)
 
+	def syncValueFromSlider_impl(self):
+		self.edit.setValue(self.slider.getValue())
+		self.value = self.slider.getValue()
+		optionalCall(self.onValueChange, self)
+	def syncValueFromEdit_impl(self):
+		self.slider.setValue(self.edit.getValue())
+		self.value = self.edit.getValue()
+		optionalCall(self.onValueChange, self)
 
+	# ================ Public Interface ================
+	
+	def setValue(self, value: int):
+		self.value = value
+		self.edit.setValue(value)
+		self.slider.setValue(value)
 
-# @dataclass(slots=True)
-# class NumFieldWidget(RectWidgetHLayout):
-# 	edit: LineEditWidget
-# 	slider: SliderHWidget
+	# ================ Contract Interface ================
+	
+	def __post_init__(self, scope: tuple[int, int]):
+		self.edit   = self.addWidget(
+			LinearLayoutAttribute(0, self.styleSheet.editPortion),
+			IntegerLineEditWidget, scope=scope,
+			onEditComplete=self.syncValueFromEdit_impl)
+		self.slider = self.addWidget(
+			LinearLayoutAttribute(1, self.styleSheet.sliderPortion),
+			IntegerSliderHWidget, scope=scope,
+			onValueChange=self.syncValueFromSlider_impl)
 
-# 	def __post_init__(self):
-# 		self.edit   = self.addWidget(LinearLayoutAttribute(0, self.styleSheet.editPortion),  LineEditWidget)
-# 		self.slider = self.addWidget(LinearLayoutAttribute(1, self.styleSheet.sliderPortion), SliderHWidget)
+	# ================ Style ================
 
-# 	@dataclass(slots=True)
-# 	class StyleSheet(RectWidgetHLayout.StyleSheet):
-# 		editPortion: int = 1
-# 		sliderPortion: int = 1
-# 	styleSheet: StyleSheet = field(default_factory=StyleSheet)
+	@dataclass(slots=True)
+	class StyleSheet(RectWidgetHLayout.StyleSheet):
+		editPortion: int = 1
+		sliderPortion: int = 1
+	styleSheet: StyleSheet = field(default_factory=StyleSheet)
+
+@dataclass(slots=True)
+class ConfirmationWidget(RectWidgetHLayout):
+	confirmed: bool | None = None
+
+	onAction: Callable[[], None] | Callable[[Self], None] = lambda: None
+
+	def handleConfirm_impl(self): self.confirmed = True; optionalCall(self.onAction, self)
+	def handleCancel_impl(self): self.confirmed = False; optionalCall(self.onAction, self)
+
+	# ================ Contract Interface ================
+
+	def draw(self, screen):
+		WidgetBase.draw(self, screen)
+
+	def __post_init__(self):
+		t = self.addWidget(LinearLayoutAttribute(order=0), LabeledPushButtonWidget, onPress=self.handleCancel_impl,  text="Cancel")
+		t.styleSheet = replace(self.styleSheet)
+		t.overlay.styleSheet.fontSize = int(self.uniform.fontSize * 0.7)
+		f = self.addWidget(LinearLayoutAttribute(order=1), LabeledPushButtonWidget, onPress=self.handleConfirm_impl, text="Confirm")
+		f.styleSheet = replace(self.styleSheet)
+		f.overlay.styleSheet.fontSize = int(self.uniform.fontSize * 0.7)
+
+	def reportHeight(self):
+		return 2
+
+	def activateLayout(self):
+		if (self.dim.y == 0): return
+		super().activateLayout()
+
+	# ================ Style ================
+
+	@dataclass(slots=True)
+	class StyleSheet(LabeledPushButtonWidget.StyleSheet): pass
+	styleSheet: StyleSheet = field(default_factory=StyleSheet)

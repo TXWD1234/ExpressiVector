@@ -16,32 +16,6 @@ deliberate presence hardcoding custom logic.
 # ················ Sidebar ················
 # -----------------------------------------
 
-@dataclass(slots=True)
-class IconedPushButtonWidget(PushButtonWidget):
-	# ================ Contract Interface ================
-
-	def __post_init__(self):
-		self.setOverlay(IconOverlay)
-
-	def activateLayout(self):
-		self.overlay.styleSheet.margin = self.styleSheet.iconMargin + self.styleSheet.margin
-		self.overlay.setImage(pygame.transform.scale(
-			self.source, scaleToFit(
-				ivec2.fromTuple(self.source.get_size()),
-			    self.dim - ivec2(self.overlay.styleSheet.margin,
-			                     self.overlay.styleSheet.margin) * 2).toTuple()))
-
-	# ================ Public Interface ================
-
-	source: pygame.Surface | None = None
-
-	# ================ Style ================
-
-	@dataclass(slots=True)
-	class StyleSheet(PushButtonWidget.StyleSheet):
-		iconMargin: int = 0
-	styleSheet: StyleSheet = field(default_factory=StyleSheet)
-
 def setEditStateCb_impl(w: IconedPushButtonWidget, state: EditState):
 	w.uniform.editState = state if w.uniform.editState != state else EditState.Nothing
 	w.uniform.app.editStateUpdate()
@@ -70,6 +44,9 @@ class SidebarWidget(RectWidgetVLayout):
 			attrib.proportion = proportion
 		return super().activateLayout()
 
+	def draw(self, screen):
+		return RectWidgetBase.draw(self, screen)
+
 # --------------------------------------------------
 # ················ Configure Widget ················
 # --------------------------------------------------
@@ -87,7 +64,7 @@ class ConfigHEntryBase[T: RectWidgetBase](RectWidgetHLayout):
 	text: InitVar[str]
 	entryWidgetType: InitVar[type[T]]
 	entryWidgetArgs: InitVar[dict]
-	proportion: InitVar[tuple[int, int] | None ] = None
+	proportion: InitVar[tuple[int, int] | None] = None
 
 	entryWidget: T | None = field(init=False, default=None)
 	labelWidget: LabelWidget | None = field(init=False, default=None)
@@ -197,6 +174,7 @@ class ConfigPanel(RectWidgetRigidUnitedVLayout):
 		# DevNote: Panel Name
 
 		screen.set_clip(makeRect(self.pos, self.dim))
+		RectWidgetBase.draw(self, screen)
 		super().draw(screen)
 
 		screen.set_clip(prevClip)
@@ -238,9 +216,316 @@ class ConfigWidget(RectWidgetBase):
 
 # ################ Color Picker ################
 
+# rainbow
+hueArr = [
+	(255, 0,   0  ),
+	(255, 255, 0  ),
+	(0,   255, 0  ),
+	(0,   255, 255),
+	(0,   0,   255),
+	(255, 0,   255),
+	(255, 0,   0  )
+]
+
+def normalizeColor(rgb: Color) -> Color:
+	return (rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0)
+
+# rgb -> hsv
+def findHSV(rgb: Color) -> tuple[Color, float, float]:
+	r, g, b = normalizeColor(rgb)
+	cmax = max(r, g, b)
+	cmin = min(r, g, b)
+	delta = cmax - cmin
+
+	v = cmax # value
+	s = delta / v if v != 0 else 1.0 # saturation
+	# Color = Brightness * (White * (1 - Saturation) + Hue * Saturation)
+	h = (int((r - cmin) / delta * 255),
+		 int((g - cmin) / delta * 255),
+		 int((b - cmin) / delta * 255)) if delta != 0 else (255, 0, 0)
+	return (h, s, v)
+
+def findTFromHue(hue: Color):
+    r, g, b = normalizeColor(hue)
+    cmax = max(r, g, b)
+    cmin = min(r, g, b)
+    delta = cmax - cmin
+
+    if delta == 0: return 0.0
+    if cmax == r: seg = (g - b) / delta
+    elif cmax == g: seg = 2.0 + (b - r) / delta
+    else: seg = 4.0 + (r - g) / delta
+    return (seg % 6.0) / 6.0
+
 @dataclass(slots=True)
-class ColorPickerWidget(RectWidgetBase):
-	pass
+class ColorPickerHue(SliderHWidget):
+	color: Color = field(default_factory=lambda: (255, 0, 0)) # hue
+	texture: pygame.Surface | None = field(init=False, default=None)
+
+	onColorChange: Callable[[], None] | Callable[[Self], None] = lambda: None
+
+	def handleSlide_impl(self):
+		# resolve color
+
+		i = int(math.floor(self.value * 6))
+		t = self.value * 6 - i
+
+		if (i == 6): self.color = hueArr[6]
+		else: self.color = lerpColor(hueArr[i], hueArr[i + 1], t)
+
+		self.dragger.state.colorOverride = self.color
+		optionalCall(self.onColorChange, self)
+
+	# ================ Public Interface ================
+
+	def setHue(self, color: Color):
+		self.color = color
+		self.setValue(findTFromHue(color))
+		self.dragger.state.colorOverride = self.color
+		optionalCall(self.onColorChange, self)
+
+	# ================ Contract Interface ================
+
+	def __post_init__(self):
+		self.onValueChange = self.handleSlide_impl
+
+	def activateLayout(self):
+		super().activateLayout()
+
+		if (self.dim.y == 0): return
+		
+		# create gradient texture
+		palette = pygame.Surface((7, 1))
+		palette.set_at((0, 0), hueArr[0])
+		palette.set_at((1, 0), hueArr[1])
+		palette.set_at((2, 0), hueArr[2])
+		palette.set_at((3, 0), hueArr[3])
+		palette.set_at((4, 0), hueArr[4])
+		palette.set_at((5, 0), hueArr[5])
+		palette.set_at((6, 0), hueArr[6])
+
+		self.texture = makeRoundedTexture(pygame.transform.smoothscale(
+			palette, (self.dim - ivec2(self.styleSheet.margin * 2)).toTuple()),
+			self.styleSheet.roundCornerRadius)
+
+		self.dragger.styleSheet.borderWidth = 2
+		self.dragger.styleSheet.borderColor = White
+		self.dragger.styleSheet.hoverBorderColor = White
+		self.dragger.state.colorOverride = Red
+
+	def draw(self, screen: pygame.Surface):
+		# gradient drawing
+		screen.blit(self.texture, (self.pos + ivec2(self.styleSheet.margin)).toTuple())
+
+		# ordinary drawing
+		if (self.styleSheet.borderWidth != 0):
+			draw.rect(screen, self.styleSheet.hoverBorderColor if self.state.hover else self.styleSheet.borderColor,
+			          makeRect(self.pos + ivec2(self.styleSheet.margin, self.styleSheet.margin),
+						       self.dim - ivec2(self.styleSheet.margin * 2, self.styleSheet.margin * 2)),
+					  width=self.styleSheet.borderWidth,
+					  border_radius=self.styleSheet.roundCornerRadius)
+		tryCall(self.overlay, "draw", screen, self)
+		self.dragger.draw(screen)
+		self.diff = False
+
+	def reportHeight(self): return 1
+
+
+@dataclass(slots=True)
+class ColorPickerSV(RectWidgetBase):
+	hue: Color = field(default_factory=lambda: (255, 0, 0)) # hue
+	color: Color = field(default_factory=lambda: (255, 0, 0)) # result color
+
+	texture: pygame.Surface | None = field(init=False, default=None)
+	dragger: DragWidget | None = field(init=False, default=None)
+
+	onColorChange: Callable[[], None] | Callable[[Self], None] = lambda: None
+
+	# create gradient texture
+	def composeTexture_impl(self):
+		palette = pygame.Surface((2, 2))
+		palette.set_at((0, 0), (255, 255, 255))
+		palette.set_at((1, 0), self.hue)
+		palette.set_at((0, 1), (0, 0, 0))
+		palette.set_at((1, 1), (0, 0, 0))
+
+		self.texture = makeRoundedTexture(pygame.transform.smoothscale(
+			palette, (self.dim - ivec2(self.styleSheet.margin * 2)).toTuple()),
+			self.styleSheet.roundCornerRadius)
+
+	def composeColor_impl(self):
+		xt, yt = self.findDraggerT()
+		#print(xt, yt)
+		self.color = orderedLerpColor(orderedLerpColor(self.hue, (255, 255, 255), 1 - xt), (0, 0, 0), 1 - yt)
+		self.dragger.state.colorOverride = self.color
+		optionalCall(self.onColorChange, self)
+
+	def findDraggerT(self) -> tuple[float, float]:
+		return ((self.dragger.pos.x - self.pos.x - self.styleSheet.margin + self.styleSheet.draggerRadius) / (self.dim.x - self.styleSheet.margin * 2),
+				(self.dragger.pos.y - self.pos.y - self.styleSheet.margin + self.styleSheet.draggerRadius) / (self.dim.y - self.styleSheet.margin * 2))
+
+	def findDraggerPosRangeBegin_impl(self, begin: int) -> tuple[int, int]:
+		return begin + self.styleSheet.margin - self.styleSheet.draggerRadius
+	def findDraggerPosRangeEnd_impl(self, end: int) -> tuple[int, int]:
+		return end - self.styleSheet.margin - self.styleSheet.draggerRadius
+	
+	def handleDrag_impl(self):
+		# constraint dragger pos
+		self.dragger.pos.x = clamp(
+			self.dragger.pos.x,
+			self.findDraggerPosRangeBegin_impl(self.pos.x),
+			self.findDraggerPosRangeEnd_impl(self.pos.x + self.dim.x))
+		self.dragger.pos.y = clamp(
+			self.dragger.pos.y,
+			self.findDraggerPosRangeBegin_impl(self.pos.y),
+			self.findDraggerPosRangeEnd_impl(self.pos.y + self.dim.y))
+
+		self.composeColor_impl()
+		self.diff = True
+
+	# ================ Public Interface ================
+
+	def setHue(self, color: Color):
+		self.hue = color
+		self.composeTexture_impl()
+		self.composeColor_impl()
+		self.diff = True
+
+	def setSV(self, s: float, v: float):
+		self.color = orderedLerpColor(orderedLerpColor(self.hue, (255, 255, 255), s), (0, 0, 0), 1 - v)
+		self.dragger.pos.x = lerp(self.findDraggerPosRangeBegin_impl(self.pos.x),
+		                          self.findDraggerPosRangeEnd_impl(self.pos.x + self.dim.x), s)
+		self.dragger.pos.y = lerp(self.findDraggerPosRangeBegin_impl(self.pos.y),
+								  self.findDraggerPosRangeEnd_impl(self.pos.y + self.dim.y), 1 - v)
+
+	# ================ Contract Interface ================
+
+	def draw(self, screen: pygame.Surface):
+		# draw texture
+		screen.blit(self.texture, (self.pos + ivec2(self.styleSheet.margin)).toTuple())
+
+		old = screen.get_clip()
+		screen.set_clip(makeMarginedRect(self.pos, self.dim, self.styleSheet.margin))
+		self.dragger.draw(screen)
+		screen.set_clip(old)
+
+	def activateLayout(self):
+		if (self.dragger is not None or self.dim.y == 0): return
+		self.composeTexture_impl()
+		self.dragger = self.addWidget(
+			DragWidget, onDrag=self.handleDrag_impl,
+			pos=ivec2(self.findDraggerPosRangeEnd_impl(self.pos.x + self.dim.x),
+			          self.findDraggerPosRangeBegin_impl(self.pos.y)),
+			dim=ivec2(self.styleSheet.draggerRadius * 2))
+		self.dragger.styleSheet.roundCornerRadius = self.styleSheet.draggerRadius
+		self.dragger.styleSheet.borderWidth = 2
+		self.dragger.styleSheet.borderColor = White
+		self.dragger.styleSheet.hoverBorderColor = White
+		self.dragger.state.colorOverride = Red
+
+	def reportHeight(self): return 7
+
+	def handleEvent(self, event):
+		if (super().handleEvent(event)): return True
+
+		if (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1):
+			self.dragger.pos = ivec2.fromTuple(event.pos)
+			self.dragger.handleEvent(event)
+			self.handleDrag_impl()
+
+	# ================ Style ================
+
+	@dataclass(slots=True)
+	class StyleSheet:
+		margin: int = 0
+		roundCornerRadius: int = 0
+		draggerRadius: int = 8
+	styleSheet: StyleSheet = field(default_factory=StyleSheet)
+
+@dataclass(slots=True)
+class ColorPickerSetter(RectWidgetVLayout):
+	color: Color = Red
+
+	onColorChange: Callable[[], None] | Callable[[Self], None] = lambda: None
+
+	r: IntegerFieldWidget | None = field(init=False, default=None)
+	g: IntegerFieldWidget | None = field(init=False, default=None)
+	b: IntegerFieldWidget | None = field(init=False, default=None)
+
+	def handleRChange_impl(self): self.color = (self.r.value , self.color[1], self.color[2]); optionalCall(self.onColorChange, self)
+	def handleGChange_impl(self): self.color = (self.color[0], self.g.value , self.color[2]); optionalCall(self.onColorChange, self)
+	def handleBChange_impl(self): self.color = (self.color[0], self.color[1], self.b.value ); optionalCall(self.onColorChange, self)
+
+	# ================ Contract Interface ================
+
+	def __post_init__(self):
+		self.r = self.addWidget(LinearLayoutAttribute(order=0), ConfigHEntryBase, text="Red"  , entryWidgetType=IntegerFieldWidget, entryWidgetArgs={"onValueChange": self.handleRChange_impl, "scope": (0, 255)}, proportion=(2, 5)).entryWidget
+		self.g = self.addWidget(LinearLayoutAttribute(order=1), ConfigHEntryBase, text="Green", entryWidgetType=IntegerFieldWidget, entryWidgetArgs={"onValueChange": self.handleGChange_impl, "scope": (0, 255)}, proportion=(2, 5)).entryWidget
+		self.b = self.addWidget(LinearLayoutAttribute(order=2), ConfigHEntryBase, text="Blue" , entryWidgetType=IntegerFieldWidget, entryWidgetArgs={"onValueChange": self.handleBChange_impl, "scope": (0, 255)}, proportion=(2, 5)).entryWidget
+
+	def reportHeight(self): return 3
+
+	# ================ Public Interface ================
+
+	def setColor(self, color: Color):
+		self.color = color
+		self.r.setValue(color[0])
+		self.g.setValue(color[1])
+		self.b.setValue(color[2])
+
+@dataclass(slots=True)
+class ColorPickerWidgetContent(RectWidgetUnitedVLayout):
+	color: Color = Red
+
+	onConfirm: Callable[[], None] | Callable[[Self], None] = lambda: None
+
+	hue:     ColorPickerHue     | None = field(init=False, default=None)
+	sv:      ColorPickerSV      | None = field(init=False, default=None)
+	setter:  ColorPickerSetter  | None = field(init=False, default=None)
+	confirm: ConfirmationWidget | None = field(init=False, default=None)
+
+	duringChangeResolution: bool = False
+
+	def handleHueChange(self):
+		if (self.duringChangeResolution): return
+		self.duringChangeResolution = True
+		self.sv.setHue(self.hue.color); self.color = self.sv.color; self.interfaceSetColor_impl()
+		self.duringChangeResolution = False
+	def handleSVChange (self):
+		if (self.duringChangeResolution): return
+		self.duringChangeResolution = True
+		self.color = self.sv.color; self.interfaceSetColor_impl()
+		self.duringChangeResolution = False
+	def handleColorSet (self):
+		if (self.duringChangeResolution): return
+		self.duringChangeResolution = True
+		self.color = self.setter.color; self.pickerSetColor_impl()
+		self.duringChangeResolution = False
+
+	def pickerSetColor_impl(self):
+		h, s, v = findHSV(self.color)
+		self.hue.setHue(h)
+		self.sv.setHue(h)
+		self.sv.setSV(s, v)
+
+	def interfaceSetColor_impl(self):
+		self.setter.setColor(self.color)
+
+	def setColor(self, color: Color):
+		self.color = color
+		self.pickerSetColor_impl(color)
+		self.setter.setColor(color)
+
+	# ================ Contract Interface ================
+
+	def __post_init__(self):
+		self.sv      = self.addWidget(UnitedLinearLayoutAttribute(order=0), ColorPickerSV     , onColorChange=self.handleSVChange )
+		self.hue     = self.addWidget(UnitedLinearLayoutAttribute(order=1), ColorPickerHue    , onColorChange=self.handleHueChange)
+		self.setter  = self.addWidget(UnitedLinearLayoutAttribute(order=2), ColorPickerSetter , onColorChange=self.handleColorSet )
+		self.confirm = self.addWidget(UnitedLinearLayoutAttribute(order=3), ConfirmationWidget, onAction     =self.onConfirm      )
+
+	def reportHeight(self):
+		return sum(w.reportHeight() for w in self.widgets)
 
 # ################ Presets ################
 '''
@@ -263,13 +548,15 @@ def sectionAdd(section: ConfigSection, *args, **kwargs):
 # ================ General Presets ================
 
 def configSectionColor(section: ConfigSection):
-	content: ConfigSectionContent = section.content
+	section.content = section.addWidget(ColorPickerWidgetContent)
 
 # ================ Stroke ================
 
 def configSectionStrokeSize(section: ConfigSection):
+	section.content.addWidget(
+		UnitedLinearLayoutAttribute(), ColorPickerSV)
 	sectionAdd(section, text="Width", entryWidgetType=SliderHWidget, entryWidgetArgs={})
-	sectionAdd(section, text="Height", entryWidgetType=IntegerLineEditWidget, entryWidgetArgs={"scope": (0, 100)}, proportion=(1, 2))
+	sectionAdd(section, text="Height", entryWidgetType=IntegerFieldWidget, entryWidgetArgs={"scope": (0, 100)}, proportion=(1, 2))
 	sectionAdd(section, text="Height", entryWidgetType=SliderHWidget, entryWidgetArgs={})
 	sectionAdd(section, text="Height", entryWidgetType=SliderHWidget, entryWidgetArgs={})
 	sectionAdd(section, text="Height", entryWidgetType=SliderHWidget, entryWidgetArgs={})
@@ -327,8 +614,8 @@ class ApplicationWidget(RectWidgetHLayout):
 		self.sidebarWidget = self.addWidget(LinearLayoutAttribute(order=2, absolute=True, proportion=0.04), SidebarWidget)
 		
 		self.configWidget = self.addWidget(LinearLayoutAttribute(order=1, absolute=True, visible=False, proportion=0.2), ConfigPanel)
-		section = self.configWidget.addWidget(UnitedLinearLayoutAttribute(), ConfigSection, name="Geometry")
-		configSectionStrokeSize(section)
+		#self.configWidget.addWidget(UnitedLinearLayoutAttribute(), ColorPickerWidgetContent)
+		configSectionColor(self.configWidget.addWidget(UnitedLinearLayoutAttribute(), ConfigSection, name="Color"))		
 
 	# Contrainted Contract Interface
 	# Will be called everytime with updated uniform state
@@ -350,16 +637,30 @@ theme: WidgetTheme = {
 	RectWidgetVLayout: RectWidgetVLayout.StyleSheet(
 		backgroundColor=MikuColorBegin, roundCornerRadius=20, margin=0),
 	PushButtonWidget: PushButtonWidget.StyleSheet(
-		backgroundColor=Blue, roundCornerRadius=20, margin=10),
+		backgroundColor=Blue, roundCornerRadius=20, margin=0, pressColor=(0x8e, 0x8e, 0x8f)),
+	IconedPushButtonWidget: IconedPushButtonWidget.StyleSheet(
+		backgroundColor=(0x53, 0x54, 0x55), hoverColor=(0x6e, 0x6e, 0x6f), pressColor=(0x8e, 0x8e, 0x8f),
+		roundCornerRadius=10, margin=10, iconMargin=5),
+	LabeledPushButtonWidget: LabeledPushButtonWidget.StyleSheet(
+		backgroundColor=(0x53, 0x54, 0x55), hoverColor=(0x6e, 0x6e, 0x6f), pressColor=(0x8e, 0x8e, 0x8f),
+		roundCornerRadius=10, margin=10, textMargin=5),
 	ToggleWidget: ToggleWidget.StyleSheet(
 		onColor=Blue, offColor=LightGray, nodeColor=White, nodePadding=4),
 	DragWidget: DragWidget.StyleSheet(
-		backgroundColor=Blue, roundCornerRadius=20, margin=10),
+		backgroundColor=Blue, roundCornerRadius=20, margin=0),
 	SliderHWidget: SliderWidgetBase.StyleSheet(
 		backgroundColor=(0xae, 0xae, 0xaf), backgroundEmptyColor=(0x55, 0x56, 0x56), hoverColor=(0xce, 0xce, 0xcf),
 		draggerNormalColor=(0x7e, 0x7e, 0x7f), draggerHoverColor=(0x5e, 0x5e, 0x5f), draggerDragColor=(0x3f, 0x3f, 0x3f),
 		draggerMargin=-5, roundCornerRadius=20, margin=10),
 	SliderVWidget: SliderWidgetBase.StyleSheet(
+		backgroundColor=(0xae, 0xae, 0xaf), backgroundEmptyColor=(0x55, 0x56, 0x56), hoverColor=(0xce, 0xce, 0xcf),
+		draggerNormalColor=(0x7e, 0x7e, 0x7f), draggerHoverColor=(0x5e, 0x5e, 0x5f), draggerDragColor=(0x3f, 0x3f, 0x3f),
+		draggerMargin=5, roundCornerRadius=20, margin=10),
+	IntegerSliderHWidget: IntegerSliderWidgetBase.StyleSheet(
+		backgroundColor=(0xae, 0xae, 0xaf), backgroundEmptyColor=(0x55, 0x56, 0x56), hoverColor=(0xce, 0xce, 0xcf),
+		draggerNormalColor=(0x7e, 0x7e, 0x7f), draggerHoverColor=(0x5e, 0x5e, 0x5f), draggerDragColor=(0x3f, 0x3f, 0x3f),
+		draggerMargin=-5, roundCornerRadius=20, margin=10),
+	IntegerSliderVWidget: IntegerSliderWidgetBase.StyleSheet(
 		backgroundColor=(0xae, 0xae, 0xaf), backgroundEmptyColor=(0x55, 0x56, 0x56), hoverColor=(0xce, 0xce, 0xcf),
 		draggerNormalColor=(0x7e, 0x7e, 0x7f), draggerHoverColor=(0x5e, 0x5e, 0x5f), draggerDragColor=(0x3f, 0x3f, 0x3f),
 		draggerMargin=5, roundCornerRadius=20, margin=10),
@@ -373,24 +674,31 @@ theme: WidgetTheme = {
 	IconWidget: IconWidget.StyleSheet(
 		backgroundColor=MikuColorBegin, roundCornerRadius=20, margin=0),
 	LineEditWidget: LineEditWidget.StyleSheet(
-		backgroundColor=(0x45, 0x46, 0x46), hoverColor=(0x35, 0x36, 0x36), editColor=(0x15, 0x16, 0x16),
+		backgroundColor=(0x45, 0x46, 0x46), hoverColor=(0x45, 0x46, 0x46), editColor=(0x25, 0x26, 0x26),
 		borderWidth=1, borderColor=(0x7e, 0x7e, 0x7f), hoverBorderColor=(0xae, 0xae, 0xaf),
 		roundCornerRadius=4, margin=4,
 		textIndentation=10, textColor=White,
 		cursorColor=White, cursorWidth=2),
+	
 	IntegerLineEditWidget: IntegerLineEditWidget.StyleSheet(
-		backgroundColor=(0x45, 0x46, 0x46), hoverColor=(0x35, 0x36, 0x36), editColor=(0x15, 0x16, 0x16),
+		backgroundColor=(0x45, 0x46, 0x46), hoverColor=(0x45, 0x46, 0x46), editColor=(0x25, 0x26, 0x26),
 		borderWidth=1, borderColor=(0x7e, 0x7e, 0x7f), hoverBorderColor=(0xae, 0xae, 0xaf),
 		roundCornerRadius=4, margin=4,
 		textIndentation=10, textColor=White,
 		cursorColor=White, cursorWidth=2),
+	IntegerFieldWidget: IntegerFieldWidget.StyleSheet(
+		backgroundColor=(0x55, 0x56, 0x56), hoverColor=(0x55, 0x56, 0x56),
+		roundCornerRadius=0, margin=0,
+		editPortion=1, sliderPortion=2),
+	ConfirmationWidget: ConfirmationWidget.StyleSheet(
+		backgroundColor=(0x53, 0x54, 0x55), hoverColor=(0x6e, 0x6e, 0x6f), pressColor=(0x8e, 0x8e, 0x8f),
+		borderWidth=2, borderColor=(0x6e, 0x6e, 0x6f), hoverBorderColor=(0xbe, 0xbe, 0xbf),
+		roundCornerRadius=16, margin=12, textMargin=5),
 
+	
 	CanvasWidget: CanvasWidget.StyleSheet(
 		backgroundColor=(0x2e, 0x2e, 0x2f), hoverColor=(0x2e, 0x2e, 0x2f),
 		roundCornerRadius=0, margin=0),
-	IconedPushButtonWidget: IconedPushButtonWidget.StyleSheet(
-		backgroundColor=(0x53, 0x54, 0x55), hoverColor=(0x6e, 0x6e, 0x6f),
-		roundCornerRadius=10, margin=10, iconMargin=5),
 	SidebarWidget: SidebarWidget.StyleSheet(
 		backgroundColor=(0x47, 0x47, 0x47), hoverColor=(0x47, 0x47, 0x47),
 		roundCornerRadius=0, margin=0),
@@ -411,5 +719,15 @@ theme: WidgetTheme = {
 	ConfigWidget: ConfigWidget.StyleSheet(
 		backgroundColor=(0x55, 0x56, 0x56), hoverColor=(0x55, 0x56, 0x56),
 		roundCornerRadius=0, margin=0),
+
+	ColorPickerHue: ColorPickerHue.StyleSheet(
+		draggerNormalColor=(0x7e, 0x7e, 0x7f), draggerHoverColor=(0x5e, 0x5e, 0x5f), draggerDragColor=(0x3f, 0x3f, 0x3f),
+		draggerMargin=0, roundCornerRadius=0, margin=5),
+	ColorPickerSV: ColorPickerSV.StyleSheet(
+		roundCornerRadius=0, margin=5),
+	ColorPickerSetter: ColorPickerSetter.StyleSheet(),
+	ColorPickerWidgetContent: ColorPickerWidgetContent.StyleSheet(),
+
+
 	ApplicationWidget: ApplicationWidget.StyleSheet()
 }

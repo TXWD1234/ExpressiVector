@@ -145,3 +145,26 @@ class FontManager:
 
 def makeMarginedRect(pos: ivec2, dim: ivec2, margin: int):
 	return makeRect(pos.offset(margin, margin), dim.offset(margin * -2, margin * -2))
+
+def makeRoundedTexture(source: pygame.Surface, radius: int) -> pygame.Surface:
+    rounded = pygame.Surface(source.get_size(), pygame.SRCALPHA)
+    pygame.draw.rect(rounded, (255, 255, 255, 255), rounded.get_rect(), border_radius=radius)
+    rounded.blit(source, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+    return rounded
+
+def lerp(begin: float, end: float, t: float) -> float:
+	return begin + (end - begin) * t
+
+def orderedLerp(a: float, b: float, t: float) -> float:
+	return lerp(min(a, b), max(a, b), t)
+
+def orderedLerpColor(begin: Color, end: Color, t: float) -> Color:
+	return (int(orderedLerp(begin[0], end[0], t)),
+	        int(orderedLerp(begin[1], end[1], t)),
+			int(orderedLerp(begin[2], end[2], t)))
+
+def lerpColor(c1: Color, c2: Color, t: float) -> Color:
+    # Ensure t is a float, and independently interpolate each channel
+    return (int(c1[0] + (c2[0] - c1[0]) * t),
+            int(c1[1] + (c2[1] - c1[1]) * t),
+            int(c1[2] + (c2[2] - c1[2]) * t))
