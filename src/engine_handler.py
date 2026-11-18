@@ -17,6 +17,7 @@ class EditStateTag(Enum):
 	Nothing = auto() # selecting no tool
 	Stroke = auto()
 	ColorPick = auto()
+	FileExplore = auto()
 
 # ################ Globals ################
 

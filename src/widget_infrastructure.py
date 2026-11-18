@@ -299,6 +299,12 @@ class RectWidgetBase(WidgetBase):
 		self.state.hover = inRange(makeRect(self.pos, self.dim), pos)
 		self.diff = True
 		
+@dataclass(slots=True)
+class TransparentRectWidget(RectWidgetBase):
+	def draw(self, screen):
+		tryCall(self.overlay, "draw", screen, self)
+		WidgetBase.draw(self, screen)
+		self.diff = False
 
 @dataclass(slots=True)
 class LinearLayoutAttribute:
@@ -678,6 +684,45 @@ class PushButtonWidget(RectWidgetBase):
 	styleSheet: StyleSheet = field(default_factory=StyleSheet)
 
 @dataclass(slots=True)
+class ToggleButtonWidget(RectWidgetBase):
+	onPress: Callable[[], None] | Callable[[Self], None] = lambda: None
+
+	pressing: bool = False
+
+	# ================ Contract Interface ================
+
+	def handleEvent(self, event):
+		if (super().handleEvent(event)): return True # process sub widgets
+		# sub widgets not handled - attempt handling for this widget
+		# along with that, state is also modified
+		match (event.type):
+			case pygame.MOUSEBUTTONDOWN:
+				if (event.button != 1): return False
+				if (not self.pressing):
+					self.state.colorOverride = self.styleSheet.pressColor
+					self.pressing = True
+					self.diff = True
+					print("down")
+				else:
+					optionalCall(self.onPress, self)
+					self.state.colorOverride = None
+					self.pressing = False
+					self.diff = True
+					print("up")
+			case _:	return False
+		return True
+
+	# ================ Public Interface ================
+	
+	# ================ Style ================
+
+	@dataclass(slots=True)
+	class StyleSheet(RectWidgetBase.StyleSheet):
+		pressColor: Color = DefaultColor
+	styleSheet: StyleSheet = field(default_factory=StyleSheet)
+
+
+@dataclass(slots=True)
 class IconedPushButtonWidget(PushButtonWidget):
 	# ================ Contract Interface ================
 
@@ -936,14 +981,14 @@ class IntegerSliderVWidget(IntegerSliderWidgetBase):
 
 
 @dataclass(slots=True)
-class LabelWidget(RectWidgetBase):
+class LabelWidget(TransparentRectWidget):
 	# ================ Contract Interface ================
 
 	def __post_init__(self):
 		self.setOverlay(LabelOverlay)
 
 	def activateLayout(self):
-		self.overlay.setText(self.text, self.dim.x)
+		self.overlay.setText(self.text)
 	
 	# ================ Public Interface ================
 
@@ -951,10 +996,10 @@ class LabelWidget(RectWidgetBase):
 
 	def setText(self, text: str | None = None) -> int:
 		if text is not None: self.text = text
-		return self.overlay.setText(self.text, self.dim.x)
+		return self.overlay.setText(self.text)
 
 @dataclass(slots=True)
-class IconWidget(RectWidgetBase):
+class IconWidget(TransparentRectWidget):
 	# ================ Contract Interface ================
 
 	def __post_init__(self):
@@ -969,7 +1014,7 @@ class IconWidget(RectWidgetBase):
 	source: pygame.Surface | None = None
 
 	def setImage(self, path: str):
-		self.source = pygame.image.load(path).convert_alpha()
+		self.source = loadIcon(path)
 		self.activateLayout()
 
 @dataclass(slots=True)
@@ -1050,6 +1095,13 @@ class LineEditWidget(RectWidgetBase):
 		optionalCall(self.onEditComplete, self)
 		self.exitFocus()
 
+	# ================ Public Interface ================
+
+	def setText(self, text: str):
+		self.text = text
+		self.overlay.setText(self.text)
+		self.cursor = len(text)
+
 	# ================ Style ================
 
 	@dataclass(slots=True)
@@ -1074,8 +1126,7 @@ class IntegerLineEditWidget(LineEditWidget):
 	def getValue(self): return self.value
 	def setValue(self, value: int):
 		self.value = int(value)
-		self.text = str(value)
-		self.updateText_impl()
+		self.setText(str(value))
 
 	# ================ Logical Implementation ================
 
@@ -1226,3 +1277,25 @@ class ScrollLayout(RectWidgetRigidUnitedVLayout):
 	class StyleSheet(RectWidgetUnitedVLayout.StyleSheet):
 		scrollVel: int = 10
 	styleSheet: StyleSheet = field(default_factory=StyleSheet)
+
+	# ================ Public Interface ================
+
+	def scrollToWidget(self, widget: RectWidgetBase):
+		'''widget must be sub widget of this layout.'''
+		diff = self.pos.y - widget.pos.y
+		for w in self.widgets:
+			w.move(ivec2(0, diff))
+			w.subWidgetHandleMouseDisplacement(ivec2.fromTuple(pygame.mouse.get_pos()))
+		self.diff = True
+
+@dataclass(slots=True)
+class RectWidgetHolder(RectWidgetBase):
+	content: RectWidgetBase | None = None
+	
+	# ================ Contract Interface ================
+
+	def activateLayout(self):
+		if (self.dim.y == 0): return
+		self.content.pos = replace(self.pos)
+		self.content.dim = replace(self.dim)
+		super().activateLayout()

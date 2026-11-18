@@ -168,3 +168,9 @@ def lerpColor(c1: Color, c2: Color, t: float) -> Color:
     return (int(c1[0] + (c2[0] - c1[0]) * t),
             int(c1[1] + (c2[1] - c1[1]) * t),
             int(c1[2] + (c2[2] - c1[2]) * t))
+
+def loadIcon(path: str) -> pygame.Surface:
+	image = pygame.image.load(getProgramDir() / path).convert_alpha()
+	with pygame.PixelArray(image) as pixels:
+		pixels.replace((0, 0, 0), (255, 255, 255), 0.0)
+	return image

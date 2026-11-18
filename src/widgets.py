@@ -2,6 +2,7 @@
 
 from .widget_infrastructure import *
 from .canvas_widget import *
+from pathlib import Path
 
 # ============================================================================
 # **************** Application Specific Widget Implementation ****************
@@ -33,13 +34,10 @@ class HeightedIconedPushButtonWidget(IconedPushButtonWidget):
 class SidebarWidget(ScrollLayout):
 
 	def addTool_impl(self, icon: str, state: EditStateTag):
-		image = pygame.image.load(getProgramDir() / icon).convert_alpha()
-		with pygame.PixelArray(image) as pixels:
-			pixels.replace((0, 0, 0), (255, 255, 255), 0.0)
 		return self.addWidget(
 			UnitedLinearLayoutAttribute(),
 		    HeightedIconedPushButtonWidget,
-			source=image,
+			source=loadIcon(icon),
 			onPress=lambda w: setEditStateCb_impl(w, state))
 
 	# ================ Contract Interface ================
@@ -530,6 +528,234 @@ class ColorPickerWidgetContent(RectWidgetUnitedVLayout):
 	def reportHeight(self):
 		return sum(w.reportHeight() for w in self.widgets)
 
+
+# ################ File Explorer ################
+
+@dataclass(slots=True)
+class FileExplorerEntry(RectWidgetBase):
+	selected: bool = False
+
+	onSelectEntry: Callable[[], None] | Callable[[Self], None] = lambda: None
+	onUnselectEntry: Callable[[], None] | Callable[[Self], None] = lambda: None
+	onDoubleClick: Callable[[], None] | Callable[[Self], None] = lambda: None
+
+	manifest: RectWidgetHLayout | None = field(init=False, default=None)
+
+	path: Path | None = None
+
+	# ================ Public Interface ================
+
+	def unselect(self):
+		self.selected = False
+		self.state.colorOverride = None
+		self.diff = True
+
+	# ================ Contract Interface ================
+
+	lastPress: int = 0
+	def handleEvent(self, event: pygame.Event):
+		if (super().handleEvent(event)): return True
+		match (event.type):
+			case pygame.MOUSEBUTTONDOWN:
+				if (event.button != 1): return False
+				now = pygame.time.get_ticks()
+				
+				if (not self.selected):
+					optionalCall(self.onSelectEntry, self)
+					self.state.colorOverride = self.styleSheet.pressColor
+					self.selected = True
+				else:
+					if (now - self.lastPress < 500): # double click
+						optionalCall(self.onDoubleClick, self)
+					else: # otherwise, unselect
+						optionalCall(self.onUnselectEntry, self)
+						self.state.colorOverride = None
+						self.selected = False
+				self.diff = True
+				self.lastPress = now
+			case _:	return False
+		return True
+
+	entryInfo: InitVar[Path | None] = None
+
+	def __post_init__(self, entryInfo: Path):
+		self.path = entryInfo
+		self.manifest = self.addWidget(RectWidgetHLayout)
+		self.manifest.addWidget(LinearLayoutAttribute(proportion=1), IconWidget).setImage(
+			"assets/file-icon.png" if entryInfo.is_file() else "assets/dir-icon.png")
+		label = self.manifest.addWidget(LinearLayoutAttribute(proportion=7), LabelWidget, text=entryInfo.name)
+		label.overlay.styleSheet.fontSize = int(self.uniform.fontSize * 0.5)
+
+	def activateLayout(self):
+		self.manifest.pos = replace(self.pos)
+		self.manifest.dim = replace(self.dim)
+		super().activateLayout()
+
+	def reportHeight(self): return 1
+
+	# ================ Style ================
+
+	@dataclass(slots=True)
+	class StyleSheet(PushButtonWidget.StyleSheet):
+		pressColor: Color = DefaultColor
+		selectedColor: Color = DefaultColor
+	styleSheet: StyleSheet = field(default_factory=StyleSheet)
+
+@dataclass(slots=True)
+class FileExplorerExplorer(ScrollLayout):
+	'''File directory visualizer. Btw, I refuse to give up the name ExplorerExplorer.'''
+
+	selectedEntry: FileExplorerEntry | None = None
+
+	onPathChange: Callable[[Path], None] = lambda p: None
+
+	def handleSelection_impl(self, w: FileExplorerEntry):
+		if (self.selectedEntry is not None):
+			self.selectedEntry.unselect()
+		self.selectedEntry = w
+	def handleUnselection_impl(self, w: FileExplorerEntry):
+		self.selectedEntry = None
+
+	def handleDoubleClick_impl(self, w: FileExplorerEntry):
+		self.onPathChange(w.path)
+
+	# ================ Public Interface ================
+
+	def setPath(self, path: Path):
+		# clear
+		self.widgets.clear()
+		self.solver.widgetAttribs.clear()
+
+		contents = sorted(path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+		for i in contents:
+			self.addWidget(
+				UnitedLinearLayoutAttribute(), FileExplorerEntry, entryInfo=i,
+				onSelectEntry  =self.handleSelection_impl,
+				onDoubleClick  =self.handleDoubleClick_impl,
+				onUnselectEntry=self.handleUnselection_impl)
+
+		self.activateLayout()
+		self.activateLayout()
+
+		self.diff = True
+
+	# ================ Contract Interface ================
+
+	def activateLayout(self):
+		if (self.dim.y == 0): return
+		return super().activateLayout()
+
+	def draw(self, screen):
+		rect = makeRect(self.pos + ivec2(self.styleSheet.margin, self.styleSheet.margin),
+						self.dim - ivec2(self.styleSheet.margin * 2, self.styleSheet.margin * 2))
+		pygame.draw.rect(screen,
+		          self.state.colorOverride if self.state.colorOverride is not None else
+				  (self.styleSheet.hoverColor if self.state.hover else self.styleSheet.backgroundColor),
+		          rect, border_radius=self.styleSheet.roundCornerRadius)
+		super().draw(screen)
+
+@dataclass(slots=True)
+class FileExplorerWidgetContent(RectWidgetVLayout):
+	# widgets
+	forwardButton:  IconedPushButtonWidget | None = field(init=False, default=None)
+	backwardButton: IconedPushButtonWidget | None = field(init=False, default=None)
+	pathBar:        LineEditWidget         | None = field(init=False, default=None)
+	explorer:       FileExplorerExplorer   | None = field(init=False, default=None)
+
+	confirm: ConfirmationWidget | None = field(init=False, default=None)
+
+	# state
+	path: Path = field(default_factory=Path.home)
+	history: list[Path] = field(default_factory=lambda: [Path.home()])
+	historyIndex: int = 0
+
+	# interface
+	onConfirm: Callable[[], None] | Callable[[Self], None] = lambda: None
+	onCancel: Callable[[], None] | Callable[[Self], None] = lambda: None
+
+	# call after self.path is set
+	def updatePath_impl(self):
+		self.explorer.setPath(self.path)
+		self.pathBar.setText(str(self.path.absolute()))
+
+	def forwardHistory_impl(self):
+		if (self.historyIndex == len(self.history) - 1): return
+		self.historyIndex += 1
+		self.path = self.history[self.historyIndex]
+		self.updatePath_impl()
+		
+	def backwardHistory_impl(self):
+		if (self.historyIndex == 0): return
+		self.historyIndex -= 1
+		self.path = self.history[self.historyIndex]
+		self.updatePath_impl()
+
+	# call after self.path is set; don't call when forward/backwarding
+	def enterDir_impl(self):
+		self.historyIndex += 1
+		self.history = self.history[:self.historyIndex]
+		self.history.append(self.path)
+
+
+	def handleExplorerPathChange_impl(self, path: Path):
+		if (path.is_dir()):
+			self.path = path
+			self.updatePath_impl()
+			self.enterDir_impl()
+
+
+	# ================ Contract Interface ================
+
+	def __post_init__(self):
+		navigationLayout: RectWidgetHLayout = self.addWidget(
+			LinearLayoutAttribute(proportion=0.05, absolute=True), RectWidgetHLayout)
+		self.backwardButton = navigationLayout.addWidget(
+			LinearLayoutAttribute(proportion=0.15, absolute=True), IconedPushButtonWidget,
+			source=loadIcon("assets/backward-icon.png"),
+			onPress=self.backwardHistory_impl)
+		self.backwardButton.styleSheet = IconedPushButtonWidget.StyleSheet(
+			backgroundColor=(0x53, 0x54, 0x55), hoverColor=(0x6e, 0x6e, 0x6f), pressColor=(0x8e, 0x8e, 0x8f),
+			borderWidth=2, borderColor=(0x6e, 0x6e, 0x6f), hoverBorderColor=(0xbe, 0xbe, 0xbf),
+			roundCornerRadius=8, margin=2, iconMargin=2)
+		self.backwardButton.styleSheet.margin = 2
+		self.backwardButton.styleSheet.iconMargin = 2
+		self.forwardButton = navigationLayout.addWidget(
+			LinearLayoutAttribute(proportion=0.15, absolute=True), IconedPushButtonWidget,
+			source=loadIcon("assets/forward-icon.png"),
+			onPress=self.forwardHistory_impl)
+		self.forwardButton.styleSheet = IconedPushButtonWidget.StyleSheet(
+			backgroundColor=(0x53, 0x54, 0x55), hoverColor=(0x6e, 0x6e, 0x6f), pressColor=(0x8e, 0x8e, 0x8f),
+			borderWidth=2, borderColor=(0x6e, 0x6e, 0x6f), hoverBorderColor=(0xbe, 0xbe, 0xbf),
+			roundCornerRadius=8, margin=2, iconMargin=2)
+		def handlePathBarEditComplete():
+			path = Path(self.pathBar.text)
+			if (not path.exists()): return
+			self.path = path
+			self.updatePath_impl()
+			self.enterDir_impl()
+		self.pathBar = navigationLayout.addWidget(
+			LinearLayoutAttribute(), LineEditWidget,
+			onEditComplete=handlePathBarEditComplete)
+
+		self.explorer = self.addWidget(
+			LinearLayoutAttribute(), FileExplorerExplorer,
+			onPathChange=self.handleExplorerPathChange_impl)
+		self.explorer.setPath(self.path)
+
+		self.confirm = self.addWidget(
+			LinearLayoutAttribute(proportion=0.075, absolute=True), ConfirmationWidget,
+			onAction=lambda: optionalCall(self.onConfirm if self.confirm.confirmed else self.onCancel, self))
+
+	def activateLayout(self):
+		if (self.dim.y == 0): return
+		self.pathBar.setText(str(self.path))
+		return super().activateLayout()
+
+
+
+
+
+
 # ################ Presets ################
 '''
 --- Architecture of the presets ---
@@ -609,27 +835,40 @@ def configSectionStrokeGeomtry(section: ConfigSection):
 
 @dataclass(slots=True, weakref_slot=True)
 class ApplicationWidget(RectWidgetHLayout):
-	configWidgets: dict[EditStateTag, ConfigPanel] = field(default_factory=dict)
+	# tools
+	configSections: dict[EditStateTag, ConfigSection] = field(default_factory=dict)
 
+	# panels
+	mainPanel:         ConfigPanel   | None = field(init=False, default=None)
+	colorPickPanel:    ConfigPanel   | None = field(init=False, default=None)
+	fileExplorerPanel: RectWidgetHolder | None = field(init=False, default=None)
+
+	# main widgets
 	canvasWidget: CanvasWidget | None = field(init=False, default=None)
-	#configWidget: ConfigWidget | None = field(init=False, default=None)
 	configWidget: ConfigPanel | None = field(init=False, default=None)
 	sidebarWidget: SidebarWidget | None = field(init=False, default=None)	
 
-	def addPanel_impl(self, tag: EditStateTag):
+	# ================ Implementation Utility ================
+
+	def addPanel_impl(self):
 		w = self.addWidget(
 			LinearLayoutAttribute(order=1, absolute=True, visible=False, proportion=0.2), ConfigPanel)
-		self.configWidgets[tag] = w
 		return w
 
-	def addSection(self, panel: ConfigPanel, sectionName: str):
-		return panel.addWidget(UnitedLinearLayoutAttribute(), ConfigSection, name=sectionName)
+	def addSection_impl(self, panel: ConfigPanel, sectionName: str, tag: EditStateTag):
+		w = panel.addWidget(UnitedLinearLayoutAttribute(), ConfigSection, name=sectionName)
+		self.configSections[tag] = w
+		return w
+
+	def switchPanel_impl(self, panel: ConfigPanel):
+		self.configWidget.hide()
+		self.configWidget = panel
+		self.editStateUpdate()
 
 	# ================ Initialization ================
 
 	def initStroke_impl(self):
-		panel = self.addPanel_impl(EditStateTag.Stroke)
-		section = self.addSection(panel, "Stroke")
+		section = self.addSection_impl(self.mainPanel, "Stroke", EditStateTag.Stroke)
 		
 		def widthChange(w: IntegerFieldWidget):
 			self.uniform.editState[EditStateTag.Stroke].width = w.value
@@ -663,26 +902,61 @@ class ApplicationWidget(RectWidgetHLayout):
 		colorField.styleSheet.hoverBorderColor=(0xff, 0xff, 0xff)
 
 	def initColorPick_impl(self):
-		colorPanel = self.addPanel_impl(EditStateTag.ColorPick)
-		colorSection = self.addSection(colorPanel, "Color")
-		def colorCancel():
-			if (self.uniform.editStateTag[-1] == EditStateTag.ColorPick): self.uniform.editStateTag.pop()
-			self.editStateUpdate()
-		def colorConfirm(w: IntegerFieldWidget):
-			colorCancel()
+		self.colorPickPanel = self.addPanel_impl()
+		section = self.colorPickPanel.addWidget(UnitedLinearLayoutAttribute(), ConfigSection, name="Color Picker")
+		
+		def cancel():
+			if (self.uniform.editStateTag[-1] == EditStateTag.ColorPick):
+				self.uniform.editStateTag.pop()
+			self.isOrdinaryPanelState = True
+			self.switchPanel_impl(self.mainPanel)
+		def confirm(w: IntegerFieldWidget):
+			cancel()
 			self.provideColorPick_impl()
-		colorPickerContent = colorSection.addWidget(
-			ColorPickerWidgetContent, onConfirm=colorConfirm, onCancel=colorCancel)
-		colorSection.content = colorPickerContent
-		self.colorPickProvideGetter = lambda: colorPickerContent.color
-		self.colorPickProvideSetter = lambda color: colorPickerContent.setColor(color)
+		content = section.addWidget(
+			ColorPickerWidgetContent, onConfirm=confirm, onCancel=cancel)
+		section.content = content
+		self.colorPickProvideGetter = lambda: content.color
+		self.colorPickProvideSetter = lambda color: content.setColor(color)
+
+	def initFileExplorer_impl(self):
+		self.fileExplorerPanel = self.addWidget(
+			LinearLayoutAttribute(order=1, absolute=True, visible=False, proportion=0.2),
+			RectWidgetHolder)
+		
+		section = self.fileExplorerPanel.addWidget(ConfigSection, name="File Explorer")
+		self.fileExplorerPanel.content = section
+		
+		def cancel():
+			if (self.uniform.editStateTag[-1] == EditStateTag.FileExplore):
+				self.uniform.editStateTag.pop()
+			self.isOrdinaryPanelState = True
+			self.switchPanel_impl(self.mainPanel)
+		def confirm():
+			cancel()
+			# provide
+		section.content = section.addWidget(FileExplorerWidgetContent, onCancel=cancel, onConfirm=confirm)
+
+		#self.colorPickProvideGetter = lambda: content.color
+		#self.colorPickProvideSetter = lambda color: content.setColor(color)
+
 
 	def __post_init__(self):
 		self.canvasWidget = self.addWidget(LinearLayoutAttribute(order=0), CanvasWidget)
 		self.sidebarWidget = self.addWidget(LinearLayoutAttribute(order=2, absolute=True, proportion=0.04), SidebarWidget)
 
-		self.initStroke_impl()
-		self.initColorPick_impl()		
+		self.initColorPick_impl()
+		self.initFileExplorer_impl()
+
+		self.isOrdinaryPanelState = False
+
+		self.mainPanel = self.addPanel_impl()
+		self.mainPanel = self.fileExplorerPanel
+		self.configWidget = self.mainPanel
+		#self.initStroke_impl()
+
+
+	isOrdinaryPanelState: bool = True
 
 	# Contrainted Contract Interface
 	# Will be called everytime with updated uniform state
@@ -690,10 +964,11 @@ class ApplicationWidget(RectWidgetHLayout):
 		if (self.uniform.editStateTag[-1] == EditStateTag.Nothing):
 			self.configWidget.hide()
 		else:
-			tryCall(self.configWidget, "hide")
-			self.configWidget = self.configWidgets[self.uniform.editStateTag[-1]]
-			self.configWidget.show()
+			if (self.isOrdinaryPanelState):
+				self.configWidget = self.mainPanel
+				self.configWidget.scrollToWidget(self.configSections[self.uniform.editStateTag[-1]])
 
+			self.configWidget.show()
 			self.configWidget.activateLayout()
 			self.configWidget.activateLayout()
 
@@ -703,7 +978,7 @@ class ApplicationWidget(RectWidgetHLayout):
 
 	def setDefault_impl(self):
 		match (self.uniform.editStateTag[-1]):
-			case EditStateTag.Stroke:    self.setStrokeDefault_impl()
+			case EditStateTag.Stroke:    pass#self.setStrokeDefault_impl()
 			case EditStateTag.ColorPick: self.setColorPickDefault_impl()
 
 	strokeDefaultInited: bool = False
@@ -716,7 +991,7 @@ class ApplicationWidget(RectWidgetHLayout):
 	def setColorPickDefault_impl(self):
 		self.colorPickProvideSetter(self.colorPickRequestGetter())
 
-	# ================ Public Interface ================
+	# ================ Signal Network ================
 
 	# ---------------- Color Pick ----------------
 
@@ -729,7 +1004,8 @@ class ApplicationWidget(RectWidgetHLayout):
 		self.uniform.editStateTag.append(EditStateTag.ColorPick)
 		self.colorPickRequestGetter = getter
 		self.colorPickRequestSetter = setter
-		self.editStateUpdate()
+		self.isOrdinaryPanelState = False
+		self.switchPanel_impl(self.colorPickPanel)
 
 	def provideColorPick_impl(self):
 		self.colorPickRequestSetter(self.colorPickProvideGetter())
@@ -739,11 +1015,14 @@ theme: WidgetTheme = {
 
 	RectWidgetBase: RectWidgetBase.StyleSheet(
 		backgroundColor=MikuColorBegin, roundCornerRadius=20, margin=0),
+	TransparentRectWidget: TransparentRectWidget.StyleSheet(),
 	RectWidgetHLayout: RectWidgetHLayout.StyleSheet(
 		backgroundColor=MikuColorBegin, roundCornerRadius=20, margin=0),
 	RectWidgetVLayout: RectWidgetVLayout.StyleSheet(
 		backgroundColor=MikuColorBegin, roundCornerRadius=20, margin=0),
 	PushButtonWidget: PushButtonWidget.StyleSheet(
+		backgroundColor=Blue, roundCornerRadius=20, margin=0, pressColor=(0x8e, 0x8e, 0x8f)),
+	ToggleButtonWidget: ToggleButtonWidget.StyleSheet(
 		backgroundColor=Blue, roundCornerRadius=20, margin=0, pressColor=(0x8e, 0x8e, 0x8f)),
 	IconedPushButtonWidget: IconedPushButtonWidget.StyleSheet(
 		backgroundColor=(0x53, 0x54, 0x55), hoverColor=(0x6e, 0x6e, 0x6f), pressColor=(0x8e, 0x8e, 0x8f),
@@ -779,7 +1058,7 @@ theme: WidgetTheme = {
 	IconOverlay: IconOverlay.StyleSheet(
 		margin=0),
 	IconWidget: IconWidget.StyleSheet(
-		backgroundColor=MikuColorBegin, roundCornerRadius=20, margin=0),
+		backgroundColor=(0x55, 0x56, 0x56), hoverColor=(0x55, 0x56, 0x56), roundCornerRadius=0, margin=0),
 	LineEditWidget: LineEditWidget.StyleSheet(
 		backgroundColor=(0x45, 0x46, 0x46), hoverColor=(0x45, 0x46, 0x46), editColor=(0x25, 0x26, 0x26),
 		borderWidth=1, borderColor=(0x7e, 0x7e, 0x7f), hoverBorderColor=(0xae, 0xae, 0xaf),
@@ -801,6 +1080,10 @@ theme: WidgetTheme = {
 		backgroundColor=(0x53, 0x54, 0x55), hoverColor=(0x6e, 0x6e, 0x6f), pressColor=(0x8e, 0x8e, 0x8f),
 		borderWidth=2, borderColor=(0x6e, 0x6e, 0x6f), hoverBorderColor=(0xbe, 0xbe, 0xbf),
 		roundCornerRadius=16, margin=12, textMargin=5),
+
+	RectWidgetHolder: RectWidgetHolder.StyleSheet(
+		backgroundColor=(0x55, 0x56, 0x56), hoverColor=(0x55, 0x56, 0x56),
+		roundCornerRadius=0, margin=0),
 	
 	CanvasWidget: CanvasWidget.StyleSheet(
 		backgroundColor=(0x2e, 0x2e, 0x2f), hoverColor=(0x2e, 0x2e, 0x2f),
@@ -837,6 +1120,11 @@ theme: WidgetTheme = {
 	ColorPickerSetter: ColorPickerSetter.StyleSheet(),
 	ColorPickerWidgetContent: ColorPickerWidgetContent.StyleSheet(),
 
+	FileExplorerEntry: FileExplorerEntry.StyleSheet(
+		backgroundColor=(0x45, 0x46, 0x46), hoverColor=(0x65, 0x66, 0x66), pressColor=(0x85, 0x86, 0x86)),
+	FileExplorerExplorer: FileExplorerExplorer.StyleSheet(
+		backgroundColor=(0x45, 0x46, 0x46), hoverColor=(0x45, 0x46, 0x46)),
+	FileExplorerWidgetContent: FileExplorerWidgetContent.StyleSheet(),
 
 	ApplicationWidget: ApplicationWidget.StyleSheet()
 }

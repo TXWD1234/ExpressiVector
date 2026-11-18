@@ -116,3 +116,5 @@ class CanvasWidget(RectWidgetBase):
 						self.handler.handleMouseMotion(self.findVPPosFromHanlder_impl(event.pos))
 						self.diff = True
 								
+	def update(self):
+		super().update()
