@@ -16,36 +16,47 @@ deliberate presence hardcoding custom logic.
 # ················ Sidebar ················
 # -----------------------------------------
 
-def setEditStateCb_impl(w: IconedPushButtonWidget, state: EditState):
-	w.uniform.editState = state if w.uniform.editState != state else EditState.Nothing
+def setEditStateCb_impl(w: IconedPushButtonWidget, state: EditStateTag):
+	if w.uniform.editStateTag[-1] != state:
+		w.uniform.editStateTag.append(state)
+	else: w.uniform.editStateTag.pop()
 	w.uniform.app.editStateUpdate()
 
 @dataclass(slots=True)
-class SidebarWidget(RectWidgetVLayout):
+class HeightedIconedPushButtonWidget(IconedPushButtonWidget):
+	def reportHeight(self): return 2
+	def activateLayout(self):
+		if (self.dim.y == 0): return
+		return super().activateLayout()
 
-	def addTool_impl(self, icon: str, state: EditState):
+@dataclass(slots=True)
+class SidebarWidget(ScrollLayout):
+
+	def addTool_impl(self, icon: str, state: EditStateTag):
 		image = pygame.image.load(getProgramDir() / icon).convert_alpha()
 		with pygame.PixelArray(image) as pixels:
-			pixels.replace((0, 0, 0), (255, 255, 255), 0.1)
-		self.addWidget(
-			LinearLayoutAttribute(absolute=True),
-		    IconedPushButtonWidget,
+			pixels.replace((0, 0, 0), (255, 255, 255), 0.0)
+		return self.addWidget(
+			UnitedLinearLayoutAttribute(),
+		    HeightedIconedPushButtonWidget,
 			source=image,
 			onPress=lambda w: setEditStateCb_impl(w, state))
 
 	# ================ Contract Interface ================
 
 	def __post_init__(self):
-		self.addTool_impl("assets/stroke-tool-icon.png", EditState.Stroke)
+		self.addTool_impl("assets/stroke-tool-icon.png", EditStateTag.Stroke)
 
 	def activateLayout(self):
-		proportion: float = self.dim.x / self.dim.y
-		for attrib in self.solver.widgetAttribs:
-			attrib.proportion = proportion
+		if (self.dim.y == 0): return
+		#proportion: float = self.dim.x / self.dim.y
+		#for attrib in self.solver.widgetAttribs:
+		#	attrib.proportion = proportion
 		return super().activateLayout()
 
 	def draw(self, screen):
-		return RectWidgetBase.draw(self, screen)
+		RectWidgetBase.draw(self, screen)
+		super().draw(screen)
 
 # --------------------------------------------------
 # ················ Configure Widget ················
@@ -157,53 +168,17 @@ class ConfigSection(RectWidgetBase):
 # ################ Panel ################
 
 @dataclass(slots=True)
-class ConfigPanel(RectWidgetRigidUnitedVLayout):
+class ConfigPanel(ScrollLayout):
 	'''
 	Container of Sections.
 	All sub widgets must be sections. (with exceptions)
 	'''
 
 	# ================ Contract Interface ================
-
-	def draw(self, screen: pygame.Surface):
-		'''
-		Draw within range.
-		'''
-		prevClip = screen.get_clip()
-
-		# DevNote: Panel Name
-
-		screen.set_clip(makeRect(self.pos, self.dim))
+	
+	def draw(self, screen):
 		RectWidgetBase.draw(self, screen)
 		super().draw(screen)
-
-		screen.set_clip(prevClip)
-
-	def handleEvent(self, event):
-		if (super().handleEvent(event)): return True
-
-		match (event.type):
-			case pygame.MOUSEBUTTONDOWN | pygame.MOUSEBUTTONUP:
-				match (event.button):
-					case 4:  # Scroll Up
-						diff: int = self.pos.y - min(w.pos.y for w in self.widgets if w.visible())
-						if (diff > 0):
-							for w in self.widgets:
-								w.move(ivec2(0, min(self.styleSheet.scrollVel, diff)))
-								w.subWidgetHandleMouseDisplacement(ivec2.fromTuple(pygame.mouse.get_pos()))
-							self.diff = True
-					case 5:  # Scroll Down
-						diff: int = max(w.pos.y + w.dim.y for w in self.widgets if w.visible()) - (self.pos.y + self.dim.y)
-						if (diff > 0):
-							for w in self.widgets:
-								w.move(ivec2(0, -min(self.styleSheet.scrollVel, diff)))
-								w.subWidgetHandleMouseDisplacement(ivec2.fromTuple(pygame.mouse.get_pos()))
-							self.diff = True
-
-	@dataclass(slots=True)
-	class StyleSheet(RectWidgetUnitedVLayout.StyleSheet):
-		scrollVel: int = 10
-	styleSheet: StyleSheet = field(default_factory=StyleSheet)
 
 @dataclass(slots=True)
 class ConfigWidget(RectWidgetBase):
@@ -238,12 +213,23 @@ def findHSV(rgb: Color) -> tuple[Color, float, float]:
 	delta = cmax - cmin
 
 	v = cmax # value
-	s = delta / v if v != 0 else 1.0 # saturation
+	s = delta / v if v != 0 else 0.0 # saturation
 	# Color = Brightness * (White * (1 - Saturation) + Hue * Saturation)
 	h = (int((r - cmin) / delta * 255),
 		 int((g - cmin) / delta * 255),
 		 int((b - cmin) / delta * 255)) if delta != 0 else (255, 0, 0)
 	return (h, s, v)
+
+# hsv -> rgb
+def findRGB(h: Color, s: float, v: float) -> tuple[int, int, int]:
+    # Color = Brightness * (White * (1 - Saturation) + Hue * Saturation)
+	w = 255.0 * (1.0 - s)
+	
+	return (
+	    int(v * (w + h[0] * s)),
+	    int(v * (w + h[1] * s)),
+	    int(v * (w + h[2] * s))
+	)
 
 def findTFromHue(hue: Color):
     r, g, b = normalizeColor(hue)
@@ -256,6 +242,18 @@ def findTFromHue(hue: Color):
     elif cmax == g: seg = 2.0 + (b - r) / delta
     else: seg = 4.0 + (r - g) / delta
     return (seg % 6.0) / 6.0
+
+def setColorV(color: Color, value: float):
+	h, s, v = findHSV(color)
+	return findRGB(h, s, value)
+
+def brighter(color: Color, value: float):
+	h, s, v = findHSV(color)
+	return findRGB(h, s, min(1.0, v + value))
+def darker(color: Color, value: float):
+	h, s, v = findHSV(color)
+	return findRGB(h, s, max(0.0, v - value))
+
 
 @dataclass(slots=True)
 class ColorPickerHue(SliderHWidget):
@@ -329,7 +327,6 @@ class ColorPickerHue(SliderHWidget):
 		self.diff = False
 
 	def reportHeight(self): return 1
-
 
 @dataclass(slots=True)
 class ColorPickerSV(RectWidgetBase):
@@ -478,6 +475,7 @@ class ColorPickerWidgetContent(RectWidgetUnitedVLayout):
 	color: Color = Red
 
 	onConfirm: Callable[[], None] | Callable[[Self], None] = lambda: None
+	onCancel: Callable[[], None] | Callable[[Self], None] = lambda: None
 
 	hue:     ColorPickerHue     | None = field(init=False, default=None)
 	sv:      ColorPickerSV      | None = field(init=False, default=None)
@@ -505,24 +503,29 @@ class ColorPickerWidgetContent(RectWidgetUnitedVLayout):
 	def pickerSetColor_impl(self):
 		h, s, v = findHSV(self.color)
 		self.hue.setHue(h)
-		self.sv.setHue(h)
 		self.sv.setSV(s, v)
+		self.sv.setHue(h)
 
 	def interfaceSetColor_impl(self):
 		self.setter.setColor(self.color)
 
 	def setColor(self, color: Color):
 		self.color = color
-		self.pickerSetColor_impl(color)
+		self.pickerSetColor_impl()
 		self.setter.setColor(color)
+
+
+	def handleConfirmAction_impl(self):
+		if (self.confirm.confirmed): optionalCall(self.onConfirm, self)
+		else:                        optionalCall(self.onCancel , self)
 
 	# ================ Contract Interface ================
 
 	def __post_init__(self):
-		self.sv      = self.addWidget(UnitedLinearLayoutAttribute(order=0), ColorPickerSV     , onColorChange=self.handleSVChange )
-		self.hue     = self.addWidget(UnitedLinearLayoutAttribute(order=1), ColorPickerHue    , onColorChange=self.handleHueChange)
-		self.setter  = self.addWidget(UnitedLinearLayoutAttribute(order=2), ColorPickerSetter , onColorChange=self.handleColorSet )
-		self.confirm = self.addWidget(UnitedLinearLayoutAttribute(order=3), ConfirmationWidget, onAction     =self.onConfirm      )
+		self.sv      = self.addWidget(UnitedLinearLayoutAttribute(order=0), ColorPickerSV     , onColorChange=self.handleSVChange          )
+		self.hue     = self.addWidget(UnitedLinearLayoutAttribute(order=1), ColorPickerHue    , onColorChange=self.handleHueChange         )
+		self.setter  = self.addWidget(UnitedLinearLayoutAttribute(order=2), ColorPickerSetter , onColorChange=self.handleColorSet          )
+		self.confirm = self.addWidget(UnitedLinearLayoutAttribute(order=3), ConfirmationWidget, onAction     =self.handleConfirmAction_impl)
 
 	def reportHeight(self):
 		return sum(w.reportHeight() for w in self.widgets)
@@ -548,15 +551,19 @@ def sectionAdd(section: ConfigSection, *args, **kwargs):
 # ================ General Presets ================
 
 def configSectionColor(section: ConfigSection):
-	section.content = section.addWidget(ColorPickerWidgetContent)
+	w = section.addWidget(ColorPickerWidgetContent)
+	section.content = w
+	return w
 
 # ================ Stroke ================
 
-def configSectionStrokeSize(section: ConfigSection):
+def configSectionStrokeGeomtry(section: ConfigSection):
+
+	sectionAdd(section, text="Width", entryWidgetType=IntegerFieldWidget, entryWidgetArgs={"scope": (0, 100)}, proportion=(1, 2))
+
 	section.content.addWidget(
 		UnitedLinearLayoutAttribute(), ColorPickerSV)
 	sectionAdd(section, text="Width", entryWidgetType=SliderHWidget, entryWidgetArgs={})
-	sectionAdd(section, text="Height", entryWidgetType=IntegerFieldWidget, entryWidgetArgs={"scope": (0, 100)}, proportion=(1, 2))
 	sectionAdd(section, text="Height", entryWidgetType=SliderHWidget, entryWidgetArgs={})
 	sectionAdd(section, text="Height", entryWidgetType=SliderHWidget, entryWidgetArgs={})
 	sectionAdd(section, text="Height", entryWidgetType=SliderHWidget, entryWidgetArgs={})
@@ -602,30 +609,130 @@ def configSectionStrokeSize(section: ConfigSection):
 
 @dataclass(slots=True, weakref_slot=True)
 class ApplicationWidget(RectWidgetHLayout):
-	configWidgets: list[ConfigWidget] = field(default_factory=list)
+	configWidgets: dict[EditStateTag, ConfigPanel] = field(default_factory=dict)
 
 	canvasWidget: CanvasWidget | None = field(init=False, default=None)
 	#configWidget: ConfigWidget | None = field(init=False, default=None)
 	configWidget: ConfigPanel | None = field(init=False, default=None)
 	sidebarWidget: SidebarWidget | None = field(init=False, default=None)	
 
+	def addPanel_impl(self, tag: EditStateTag):
+		w = self.addWidget(
+			LinearLayoutAttribute(order=1, absolute=True, visible=False, proportion=0.2), ConfigPanel)
+		self.configWidgets[tag] = w
+		return w
+
+	def addSection(self, panel: ConfigPanel, sectionName: str):
+		return panel.addWidget(UnitedLinearLayoutAttribute(), ConfigSection, name=sectionName)
+
+	# ================ Initialization ================
+
+	def initStroke_impl(self):
+		panel = self.addPanel_impl(EditStateTag.Stroke)
+		section = self.addSection(panel, "Stroke")
+		
+		def widthChange(w: IntegerFieldWidget):
+			self.uniform.editState[EditStateTag.Stroke].width = w.value
+		widthField: IntegerFieldWidget = sectionAdd(
+			section, text="Width",
+			proportion=(1, 2),
+			entryWidgetType=IntegerFieldWidget,
+			entryWidgetArgs={"scope": (1, 100),
+							 "onValueChange": widthChange})
+		self.strokeDefaultInit = lambda: widthField.setValue(
+			self.uniform.editState[EditStateTag.Stroke].width)
+
+		colorField: PushButtonWidget = sectionAdd(
+			section, text="Color",
+			proportion=(1, 2),
+			entryWidgetType=PushButtonWidget,
+			entryWidgetArgs={})
+		def colorChange(color: Color):
+			self.uniform.editState[EditStateTag.Stroke].color = color
+			colorField.styleSheet.backgroundColor = color
+			colorField.styleSheet.hoverColor = brighter(color, 0.1)
+			colorField.styleSheet.pressColor = brighter(color, 0.3)
+		colorField.onPress = lambda: self.requestColorPick_impl(
+			lambda: self.uniform.editState[EditStateTag.Stroke].color,
+			colorChange)
+		colorField.styleSheet.backgroundColor = Black
+		colorField.styleSheet.hoverColor = brighter(Black, 0.2)
+		colorField.styleSheet.pressColor = brighter(Black, 0.5)
+		colorField.styleSheet.borderWidth = 2
+		colorField.styleSheet.borderColor=(0xde, 0xde, 0xdf)
+		colorField.styleSheet.hoverBorderColor=(0xff, 0xff, 0xff)
+
+	def initColorPick_impl(self):
+		colorPanel = self.addPanel_impl(EditStateTag.ColorPick)
+		colorSection = self.addSection(colorPanel, "Color")
+		def colorCancel():
+			if (self.uniform.editStateTag[-1] == EditStateTag.ColorPick): self.uniform.editStateTag.pop()
+			self.editStateUpdate()
+		def colorConfirm(w: IntegerFieldWidget):
+			colorCancel()
+			self.provideColorPick_impl()
+		colorPickerContent = colorSection.addWidget(
+			ColorPickerWidgetContent, onConfirm=colorConfirm, onCancel=colorCancel)
+		colorSection.content = colorPickerContent
+		self.colorPickProvideGetter = lambda: colorPickerContent.color
+		self.colorPickProvideSetter = lambda color: colorPickerContent.setColor(color)
+
 	def __post_init__(self):
 		self.canvasWidget = self.addWidget(LinearLayoutAttribute(order=0), CanvasWidget)
 		self.sidebarWidget = self.addWidget(LinearLayoutAttribute(order=2, absolute=True, proportion=0.04), SidebarWidget)
-		
-		self.configWidget = self.addWidget(LinearLayoutAttribute(order=1, absolute=True, visible=False, proportion=0.2), ConfigPanel)
-		#self.configWidget.addWidget(UnitedLinearLayoutAttribute(), ColorPickerWidgetContent)
-		configSectionColor(self.configWidget.addWidget(UnitedLinearLayoutAttribute(), ConfigSection, name="Color"))		
+
+		self.initStroke_impl()
+		self.initColorPick_impl()		
 
 	# Contrainted Contract Interface
 	# Will be called everytime with updated uniform state
 	def editStateUpdate(self):
-		if (self.uniform.editState == EditState.Nothing):
+		if (self.uniform.editStateTag[-1] == EditStateTag.Nothing):
 			self.configWidget.hide()
 		else:
+			tryCall(self.configWidget, "hide")
+			self.configWidget = self.configWidgets[self.uniform.editStateTag[-1]]
 			self.configWidget.show()
-			self.configWidget.widgets[0].activateLayout()
 
+			self.configWidget.activateLayout()
+			self.configWidget.activateLayout()
+
+			self.setDefault_impl()
+
+	# ================ Defaults ================
+
+	def setDefault_impl(self):
+		match (self.uniform.editStateTag[-1]):
+			case EditStateTag.Stroke:    self.setStrokeDefault_impl()
+			case EditStateTag.ColorPick: self.setColorPickDefault_impl()
+
+	strokeDefaultInited: bool = False
+	strokeDefaultInit: Callable[[], None] | None = None
+	def setStrokeDefault_impl(self):
+		if (not self.strokeDefaultInited):
+			self.strokeDefaultInited = True
+			self.strokeDefaultInit()
+
+	def setColorPickDefault_impl(self):
+		self.colorPickProvideSetter(self.colorPickRequestGetter())
+
+	# ================ Public Interface ================
+
+	# ---------------- Color Pick ----------------
+
+	colorPickRequestSetter: Callable[[Color], None] | None = field(init=False, default=None)
+	colorPickRequestGetter: Callable[[], Color] | None = field(init=False, default=None)
+	colorPickProvideSetter: Callable[[Color], None] | None = field(init=False, default=None)
+	colorPickProvideGetter: Callable[[], Color] | None = field(init=False, default=None)
+
+	def requestColorPick_impl(self, getter: Callable[[], Color], setter: Callable[[Color], None]):
+		self.uniform.editStateTag.append(EditStateTag.ColorPick)
+		self.colorPickRequestGetter = getter
+		self.colorPickRequestSetter = setter
+		self.editStateUpdate()
+
+	def provideColorPick_impl(self):
+		self.colorPickRequestSetter(self.colorPickProvideGetter())
 
 
 theme: WidgetTheme = {
@@ -694,11 +801,13 @@ theme: WidgetTheme = {
 		backgroundColor=(0x53, 0x54, 0x55), hoverColor=(0x6e, 0x6e, 0x6f), pressColor=(0x8e, 0x8e, 0x8f),
 		borderWidth=2, borderColor=(0x6e, 0x6e, 0x6f), hoverBorderColor=(0xbe, 0xbe, 0xbf),
 		roundCornerRadius=16, margin=12, textMargin=5),
-
 	
 	CanvasWidget: CanvasWidget.StyleSheet(
 		backgroundColor=(0x2e, 0x2e, 0x2f), hoverColor=(0x2e, 0x2e, 0x2f),
 		roundCornerRadius=0, margin=0),
+	HeightedIconedPushButtonWidget: HeightedIconedPushButtonWidget.StyleSheet(
+		backgroundColor=(0x53, 0x54, 0x55), hoverColor=(0x6e, 0x6e, 0x6f), pressColor=(0x8e, 0x8e, 0x8f),
+		roundCornerRadius=10, margin=10, iconMargin=5),
 	SidebarWidget: SidebarWidget.StyleSheet(
 		backgroundColor=(0x47, 0x47, 0x47), hoverColor=(0x47, 0x47, 0x47),
 		roundCornerRadius=0, margin=0),

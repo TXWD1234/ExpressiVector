@@ -6,6 +6,7 @@ from .geometry import *
 from .rgb import *
 from .infrastructure import *
 from .engine import *
+from .engine_handler import *
 from typing import Callable, Generic, TypeVar, Self, Any, ClassVar, TYPE_CHECKING
 from pygame import draw
 from dataclasses import dataclass, field, replace, InitVar
@@ -19,28 +20,6 @@ class Events:
 	MouseLeave: int = pygame.event.custom_type()
 
 DefaultColor = Magenta
-
-# ################ Globals ################
-
-class WidgetState(Enum):
-	Normal = auto()
-	Focused = auto()
-
-if TYPE_CHECKING:
-    from .widgets import ApplicationWidget
-
-@dataclass(slots=True)
-class Global:
-	widgetState: WidgetState = WidgetState.Normal
-	focusWidget: Any | None = None
-	font: FontManager = field(default_factory=FontManager)
-	engine: Engine = field(default_factory=Engine)
-	engineState: list[EngineState] = field(default_factory=lambda: [EngineState.Normal])
-	editState: EditState = EditState.Nothing
-	app: ApplicationWidget | None = None # ApplicationWidget
-	redraw: bool = False # redraw the entire UI
-	unit: int = 32 # unit dictating the size of all widgets
-	fontSize: int = 0
 
 # ################ Widget Basics ################
 '''
@@ -672,6 +651,7 @@ class PushButtonWidget(RectWidgetBase):
 		# along with that, state is also modified
 		match (event.type):
 			case pygame.MOUSEBUTTONDOWN:
+				if (event.button != 1): return False
 				self.state.colorOverride = self.styleSheet.pressColor
 				self.pressing = True
 				self.diff = True
@@ -706,7 +686,7 @@ class IconedPushButtonWidget(PushButtonWidget):
 
 	def activateLayout(self):
 		self.overlay.styleSheet.margin = self.styleSheet.iconMargin + self.styleSheet.margin
-		self.overlay.setImage(pygame.transform.scale(
+		self.overlay.setImage(pygame.transform.smoothscale(
 			self.source, scaleToFit(
 				ivec2.fromTuple(self.source.get_size()),
 			    self.dim - ivec2(self.overlay.styleSheet.margin,
@@ -857,19 +837,19 @@ class SliderWidgetBase(RectWidgetBase):
 
 	dragger: DragWidget | None = None
 
+	def initDragger_impl(self):
+		self.dragger = self.addWidget(DragWidget, onDrag=self.handleDrag_impl)
+		self.dragger.styleSheet.roundCornerRadius = self.styleSheet.roundCornerRadius
+		self.dragger.styleSheet.backgroundColor = self.styleSheet.draggerNormalColor
+		self.dragger.styleSheet.hoverColor = self.styleSheet.draggerHoverColor
+		self.dragger.styleSheet.dragColor = self.styleSheet.draggerDragColor
+		self.dragger.styleSheet.margin = self.styleSheet.draggerMargin + self.styleSheet.margin
+
+	# ================ Contract Interface ================
+
 	def draw(self, screen):
 		pygame.draw.rect(screen, self.styleSheet.backgroundEmptyColor, makeRect(self.pos, self.dim))
 		return super().draw(screen)
-
-	def setValue(self, value: float):
-		self.value = value
-		pos = self.pos[self.Axis] + (self.dim[self.Axis] - self.dragger.dim[self.Axis]) * value
-		self.dragger.pos[self.Axis] = pos
-		self.diff = True
-	def getValue(self): return self.value
-
-	def valueChange_impl(self):
-		optionalCall(self.onValueChange, self)
 		
 	def handleDrag_impl(self):
 		self.dragger.pos[not self.Axis] = self.pos[not self.Axis]
@@ -883,8 +863,6 @@ class SliderWidgetBase(RectWidgetBase):
 
 		self.valueChange_impl()
 
-	# ================ Contract Interface ================
-
 	def handleEvent(self, event):
 		if (super().handleEvent(event)): return True
 		match (event.type):
@@ -897,20 +875,27 @@ class SliderWidgetBase(RectWidgetBase):
 				return True
 
 	def activateLayout(self):
-		if (self.dragger is not None or self.dim.y == 0 or self.dim.x == 0): return
+		if (self.dim.y == 0 or self.dim.x == 0): return
 		margin: int = self.styleSheet.draggerMargin + self.styleSheet.margin
-		self.dragger = self.addWidget(
-			DragWidget,
-			pos=ivec2(self.pos.x, self.pos.y),
-			dim=ivec2(self.dim.x * (self.draggerPortion if not self.Axis else 1) + (not self.Axis) * margin * 2,
-			          self.dim.y * (self.draggerPortion if self.Axis else 1) + (self.Axis) * margin * 2),
-			onDrag=self.handleDrag_impl
-		)
-		self.dragger.styleSheet.roundCornerRadius = self.styleSheet.roundCornerRadius
-		self.dragger.styleSheet.backgroundColor = self.styleSheet.draggerNormalColor
-		self.dragger.styleSheet.hoverColor = self.styleSheet.draggerHoverColor
-		self.dragger.styleSheet.dragColor = self.styleSheet.draggerDragColor
-		self.dragger.styleSheet.margin = margin
+
+		if (self.dragger is None): self.initDragger_impl()
+		
+		self.dragger.pos = ivec2(self.pos.x, self.pos.y)
+		self.dragger.dim = ivec2(self.dim.x * (self.draggerPortion if not self.Axis else 1) + (not self.Axis) * margin * 2,
+		          			     self.dim.y * (self.draggerPortion if self.Axis else 1) + (self.Axis) * margin * 2)
+
+
+	# ================ Public Interface ================
+
+	def setValue(self, value: float):
+		self.value = value
+		pos = self.pos[self.Axis] + (self.dim[self.Axis] - self.dragger.dim[self.Axis]) * value
+		self.dragger.pos[self.Axis] = pos
+		self.diff = True
+	def getValue(self): return self.value
+
+	def valueChange_impl(self):
+		optionalCall(self.onValueChange, self)
 
 	# ================ Style ================
 
@@ -976,7 +961,7 @@ class IconWidget(RectWidgetBase):
 		self.setOverlay(IconOverlay)
 
 	def activateLayout(self):
-		self.overlay.setImage(pygame.transform.scale(
+		self.overlay.setImage(pygame.transform.smoothscale(
 			self.source, scaleToFit(ivec2.fromTuple(self.source.get_size()), self.dim).toTuple()))
 
 	# ================ Public Interface ================
@@ -1198,4 +1183,46 @@ class ConfirmationWidget(RectWidgetHLayout):
 
 	@dataclass(slots=True)
 	class StyleSheet(LabeledPushButtonWidget.StyleSheet): pass
+	styleSheet: StyleSheet = field(default_factory=StyleSheet)
+
+@dataclass(slots=True)
+class ScrollLayout(RectWidgetRigidUnitedVLayout):
+	# ================ Contract Interface ================
+
+	def draw(self, screen: pygame.Surface):
+		'''
+		Draw within range.
+		'''
+		prevClip = screen.get_clip()
+		screen.set_clip(makeRect(self.pos, self.dim))
+		
+		#RectWidgetBase.draw(self, screen)
+		super().draw(screen)
+
+		screen.set_clip(prevClip)
+
+	def handleEvent(self, event):
+		if (super().handleEvent(event)): return True
+
+		match (event.type):
+			case pygame.MOUSEBUTTONDOWN | pygame.MOUSEBUTTONUP:
+				match (event.button):
+					case 4:  # Scroll Up
+						diff: int = self.pos.y - min(w.pos.y for w in self.widgets if w.visible())
+						if (diff > 0):
+							for w in self.widgets:
+								w.move(ivec2(0, min(self.styleSheet.scrollVel, diff)))
+								w.subWidgetHandleMouseDisplacement(ivec2.fromTuple(pygame.mouse.get_pos()))
+							self.diff = True
+					case 5:  # Scroll Down
+						diff: int = max(w.pos.y + w.dim.y for w in self.widgets if w.visible()) - (self.pos.y + self.dim.y)
+						if (diff > 0):
+							for w in self.widgets:
+								w.move(ivec2(0, -min(self.styleSheet.scrollVel, diff)))
+								w.subWidgetHandleMouseDisplacement(ivec2.fromTuple(pygame.mouse.get_pos()))
+							self.diff = True
+
+	@dataclass(slots=True)
+	class StyleSheet(RectWidgetUnitedVLayout.StyleSheet):
+		scrollVel: int = 10
 	styleSheet: StyleSheet = field(default_factory=StyleSheet)

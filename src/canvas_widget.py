@@ -1,6 +1,7 @@
 # Copyright (c) 2026 ExpressiVector. Licensed under the MIT License.
 
 from .widget_infrastructure import *
+from .engine_handler import *
 
 @dataclass(slots=True)
 class CanvasWidget(RectWidgetBase):
@@ -49,6 +50,7 @@ class CanvasWidget(RectWidgetBase):
 		# bind to current engine (document)
 		# self.cameraState.pos = self.uniform.engine.canvasState.dim * 0.5
 		self.uniform.engine.redraw(1.0)
+		self.handler = EngineHandler(uniform=self.uniform)
 
 	def draw(self, screen: pygame.Surface):
 		super().draw(screen)
@@ -65,6 +67,8 @@ class CanvasWidget(RectWidgetBase):
 
 		self.diff = False
 
+	handler: EngineHandler | None = field(init=False, default=None)
+
 	def handleEvent(self, event):
 		match (event.type):
 			case Events.MouseEnter:
@@ -74,15 +78,12 @@ class CanvasWidget(RectWidgetBase):
 				self.state.hover = False
 				self.diff = True
 			case pygame.MOUSEBUTTONDOWN:
-				match (event.button):
+				match (event.button): # State init
 					case 1:  # Left Click
+						if (self.uniform.editStateTag[-1] == EditStateTag.Nothing): return False
 						self.diff = True
-						match (self.uniform.editState):
-							case EditState.Stroke:
-								self.uniform.engine.strokeCreate(self.findVPPosFromHanlder_impl(event.pos), Black, 16)
-								self.uniform.engineState.append(EngineState.Edit)
-							case EditState.Nothing:
-								diff = False
+						self.uniform.engineState.append(EngineState.Edit)
+						self.handler.handleMouseDown(self.findVPPosFromHanlder_impl(event.pos))
 					case 2:  # Middle Click
 						self.uniform.engineState.append(EngineState.Drag)
 					case 3:  # Right Click
@@ -95,17 +96,15 @@ class CanvasWidget(RectWidgetBase):
 						self.zoom_impl(self.cameraState.scale * self.cameraConfig.zoomFactor,
 						               self.findVPPosFromHanlder_impl(event.pos))
 						self.diff = True
-			case pygame.MOUSEBUTTONUP:
+			case pygame.MOUSEBUTTONUP: # State uninit
 				match (event.button):
 					case 1:  # Left Click
-						if (len(self.uniform.engineState) > 1):
-							self.uniform.engineState.pop()
-						pass
+						if (len(self.uniform.engineState) > 1): self.uniform.engineState.pop()
 					case 2:  # Middle Click
 						if (self.uniform.engineState[-1] == EngineState.Drag): self.uniform.engineState.pop()
 					case 3:  # Right Click
 						pass
-			case pygame.MOUSEMOTION:
+			case pygame.MOUSEMOTION: # State perform
 				match (self.uniform.engineState[-1]):
 					case EngineState.Normal:
 						pass
@@ -114,8 +113,6 @@ class CanvasWidget(RectWidgetBase):
 						self.cameraState.pos -= diff
 						self.diff = True
 					case EngineState.Edit:
-						match (self.uniform.editState):
-							case EditState.Stroke:
-								self.uniform.engine.strokeAppend(self.findVPPosFromHanlder_impl(event.pos))
+						self.handler.handleMouseMotion(self.findVPPosFromHanlder_impl(event.pos))
 						self.diff = True
 								

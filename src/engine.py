@@ -3,7 +3,6 @@
 from .geometry import *
 from .rgb import *
 from .infrastructure import *
-from .engine_handler import *
 import pygame
 from dataclasses import dataclass, field, replace
 
@@ -101,6 +100,11 @@ class Engine:
 	# ---------------- Stroke ----------------
 
 	@dataclass(slots=True)
+	class StrokeConfig:
+		color: Color = Black
+		width: float = 16
+
+	@dataclass(slots=True)
 	class StrokeObject:
 		vertices: list[vec2] = field(default_factory=list)
 		color: Color = Black
@@ -109,10 +113,10 @@ class Engine:
 	strokeData: list[StrokeObject] = field(default_factory=list)
 
 	# public interface
-	def strokeCreate(self, initPos: vec2, color: Color, width: float):
-		self.strokeData.append(self.StrokeObject(vertices=[initPos], color=color, width=width))
-		pygame.draw.circle(self.canvasCache.canvas, color,
-			Engine.scalePos_impl(initPos, self.canvasCache.scale), (width / 2 * self.canvasCache.scale))
+	def strokeCreate(self, initPos: vec2, config: StrokeConfig):
+		self.strokeData.append(self.StrokeObject(vertices=[initPos], color=config.color, width=config.width))
+		pygame.draw.circle(self.canvasCache.canvas, config.color,
+			Engine.scalePos_impl(initPos, self.canvasCache.scale), (config.width / 2 * self.canvasCache.scale))
 
 	def strokeAppend(self, pos: vec2):
 		self.strokeData[-1].vertices.append(pos)

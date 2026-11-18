@@ -95,6 +95,7 @@ def appDebug():
 	engine = WidgetEngine(src.ivec2(1600, 900), src.ApplicationWidget, src.theme)
 
 	engine.base().activateLayout()
+	engine.base().activateLayout()
 
 	def update() -> bool:
 		return engine.update()
