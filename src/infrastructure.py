@@ -104,7 +104,7 @@ class FontManager:
 		lastWord = 0 # index at ' '
 		for i in range(len(string)):
 			if (string[i] != ' '): continue
-			if (self.findWidth(string[lastSlice:i], fontSize).x > width):
+			if (self.findWidth(string[lastSlice:i], fontSize) > width):
 				# wrap
 				res.append(string[lastSlice:lastWord])
 				lastSlice = lastWord + 1

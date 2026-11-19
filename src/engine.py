@@ -5,6 +5,7 @@ from .rgb import *
 from .infrastructure import *
 import pygame
 from dataclasses import dataclass, field, replace
+from typing import Callable
 
 # ================================================================
 # **************** Expressive Vector Image Engine ****************
@@ -70,7 +71,21 @@ class Engine:
 	#	self.canvasCache.canvas = pygame.transform.smoothscale(self.canvasCache.canvas, (self.canvasState.dim * scale / scaleFactor).toIvec2().toTuple())
 	#	return self.canvasCache.canvas
 
+	viewProvider: Callable[[], pygame.Surface] | None = None
+	'''
+	When a tool has a preview method, and is currently in focused editing state,
+	viewProvider can be assigned to provide preview for the canvas.
+	'''
+
+	def view(self) -> pygame.Surface:
+		if (self.viewProvider is not None): return self.viewProvider()
+		return self.canvasCache.canvas
+
 	# ================ Implementation Utility ================
+
+	@staticmethod
+	def scaleDist_impl(dist: float, scale: float) -> int:
+		return int(math.floor(dist * scale))
 
 	@staticmethod
 	def scalePos_impl(pos: vec2, scale: float) -> tuple[int, int]:
@@ -141,7 +156,6 @@ class Engine:
 		def render(self, canvas: pygame.Surface, scale: float):
 			Engine.strokeDrawSingle_impl(canvas, scale, self)
 			
-
 	strokeData: list[StrokeObject] = field(default_factory=list)
 
 	# public interface
@@ -199,6 +213,9 @@ class Engine:
 		dim: vec2 = field(default_factory=vec2)
 		conf: Engine.RectConfig | None = None
 
+		def render(self, canvas: pygame.Surface, scale: float):
+			Engine.rectDrawSingle_impl(canvas, scale, self)
+
 	rectData: list[RectObject] = field(default_factory=list)
 
 	@staticmethod
@@ -207,21 +224,39 @@ class Engine:
 		bottomRight = vec2(max(pa.x, pb.x), max(pa.y, pb.y))
 		return (topLeft, bottomRight - topLeft)
 				
-
 	# public interface
 	def rectCreate(self, pa: vec2, config: RectConfig):
-		self.objectSequence.append(self.ObjectIndex(0, len(self.strokeData)))
-		self.rectData.append(self.RectObject(pos=pa, config=config))
+		self.objectSequence.append(self.ObjectIndex(1, len(self.rectData)))
+		self.rectData.append(self.RectObject(pos=pa, conf=replace(config)))
+		self.viewProvider = self.rectPreview
 	def rectFinish(self, pb: vec2):
 		pos, dim = self.findRect(self.rectData[-1].pos, pb)
 		self.rectData[-1].pos = pos
 		self.rectData[-1].dim = dim
+		self.rectDrawSingle_impl(self.canvasCache.canvas, self.canvasCache.scale, self.rectData[-1])
+		self.viewProvider = None
+		self.rectPreviewPb = None
+
+	'''
+	After rectCreate was called, rectPreviewPb must be set immediately in next
+	mouse motion event.1
+	'''
+	rectPreviewPb: vec2 | None = None
+	def rectPreview(self) -> pygame.Surface:
+		if (self.rectPreviewPb is None): return self.canvasCache.canvas
+		preview = self.canvasCache.canvas.copy()
+		pos, dim = self.findRect(self.rectData[-1].pos, self.rectPreviewPb)
+		Engine.rectDrawSingle_impl(preview, self.canvasCache.scale,
+		                           self.RectObject(pos, dim, self.rectData[-1].conf))
+		return preview
 
 	# rendering
-	def rectRender(self, canvas: pygame.Surface, scale: float, index: int):
-		pass
-
-
+	@staticmethod
+	def rectDrawSingle_impl(canvas: pygame.Surface, scale: float, object: RectObject):
+		pygame.draw.rect(canvas, object.conf.color,
+						 Engine.scalePos_impl(object.pos, scale) +
+						 Engine.scalePos_impl(object.dim, scale),
+		                 width=Engine.scaleDist_impl(object.conf.hollowWidth, scale) if object.conf.hollow else 0)
 
 	# ================ Master Rendering ================
 

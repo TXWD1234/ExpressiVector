@@ -16,6 +16,7 @@ class EngineState(Enum):
 class EditStateTag(Enum):
 	Nothing = auto() # selecting no tool
 	Stroke = auto()
+	Rect = auto()
 	ColorPick = auto()
 	FileExplore = auto()
 
@@ -37,7 +38,9 @@ class Global:
 	engineState: list[EngineState] = field(default_factory=lambda: [EngineState.Normal])
 	editStateTag: list[EditStateTag] = field(default_factory=lambda: [EditStateTag.Nothing])
 	editState: dict = field(default_factory=lambda: {
-		EditStateTag.Stroke: Engine.StrokeConfig()})
+		EditStateTag.Stroke: Engine.StrokeConfig(),
+		EditStateTag.Rect: Engine.RectConfig()
+		})
 	app: ApplicationWidget | None = None # ApplicationWidget
 	redraw: bool = False # redraw the entire UI
 	unit: int = 32 # unit dictating the size of all widgets
@@ -51,20 +54,44 @@ class EngineHandler:
 
 	uniform: Global | None = None
 
+	def endSession_impl(self):
+		while (len(self.uniform.engineState) > 1): self.uniform.engineState.pop()
+
 	# ================ Public Interface ================
 	'''
 	Guaranteed by upsteam that event is left mouse, and editStateTag is not
 	Nothing.
 	'''
 
+	inProgress: bool = False
+
 	def handleMouseDown(self, vpPos: vec2):
 		match (self.uniform.editStateTag[-1]):
 			case EditStateTag.Stroke:
 				self.uniform.engine.strokeCreate(
-					vpPos,
-					self.uniform.editState[EditStateTag.Stroke])
+					vpPos, self.uniform.editState[EditStateTag.Stroke])
+			case EditStateTag.Rect:
+				if (not self.inProgress):
+					self.uniform.engine.rectCreate(
+						vpPos, self.uniform.editState[EditStateTag.Rect])
+					self.inProgress = True
+				else:
+					self.uniform.engine.rectFinish(vpPos)
+					self.inProgress = False
+					self.endSession_impl()
+
+	def handleMouseUp(self, vpPos: vec2):
+		
+		match (self.uniform.editStateTag[-1]):
+			case EditStateTag.Stroke:
+				self.endSession_impl()
+			case EditStateTag.Rect:
+				pass
+
 
 	def handleMouseMotion(self, vpPos: vec2):
 		match (self.uniform.editStateTag[-1]):
 			case EditStateTag.Stroke:
 				self.uniform.engine.strokeAppend(vpPos)
+			case EditStateTag.Rect:
+				self.uniform.engine.rectPreviewPb = vpPos

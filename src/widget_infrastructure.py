@@ -146,17 +146,19 @@ class RectWidgetBase(WidgetBase):
 
 	def hide(self):
 		self.dim = ivec2(0, 0)
-		if (hasattr(self.parent, 'solver') and isinstance(self.parent.solver, LinearLayoutSolver)):
+		if (hasattr(self.parent, 'solver') and (isinstance(self.parent.solver, LinearLayoutSolver) or isinstance(self.parent.solver, UnitedLinearLayoutSolver))):
 			self.parent.solver.widgetAttribs[self.id].visible = False
 			self.parent.activateLayout()
+			self.parent.activateLayout()
 	def show(self):
-		if (hasattr(self.parent, 'solver') and isinstance(self.parent.solver, LinearLayoutSolver)):
+		if (hasattr(self.parent, 'solver') and (isinstance(self.parent.solver, LinearLayoutSolver) or isinstance(self.parent.solver, UnitedLinearLayoutSolver))):
 			self.parent.solver.widgetAttribs[self.id].visible = True
+			self.parent.activateLayout()
 			self.parent.activateLayout()
 			self.diff = True
 
 	def visible(self) -> bool:
-		if (hasattr(self.parent, 'solver') and isinstance(self.parent.solver, LinearLayoutSolver)):
+		if (hasattr(self.parent, 'solver') and (isinstance(self.parent.solver, LinearLayoutSolver) or isinstance(self.parent.solver, UnitedLinearLayoutSolver))):
 			return self.parent.solver.widgetAttribs[self.id].visible
 		return True
 
@@ -489,7 +491,7 @@ class RectWidgetUnitedVLayout(RectWidgetBase):
 		self.dim.y = self.solver.findMinLength(self.getter_impl, self.uniform.unit)
 		self.solver.solve(self.pos.y, self.dim.y, self.uniform.unit, self.getter_impl, self.modifier_impl)
 
-	def reportHeight(self): return sum(w.reportHeight() for w in self.widgets)
+	def reportHeight(self): return sum(w.reportHeight() * w.visible() for w in self.widgets)
 
 	def draw(self, screen):
 		return WidgetBase.draw(self, screen)
@@ -702,13 +704,11 @@ class ToggleButtonWidget(RectWidgetBase):
 					self.state.colorOverride = self.styleSheet.pressColor
 					self.pressing = True
 					self.diff = True
-					print("down")
 				else:
 					optionalCall(self.onPress, self)
 					self.state.colorOverride = None
 					self.pressing = False
 					self.diff = True
-					print("up")
 			case _:	return False
 		return True
 
@@ -790,28 +790,39 @@ class ToggleWidget(PushButtonWidget):
 	# ================ Contract Interface ================
 
 	def draw(self, screen: pygame.Surface):
-		#draw.rect(screen, Red, (self.pos.x, self.pos.y, self.dim.x, self.dim.y))
-		xunit: int = self.dim.x / 4
-		yunit: int = self.dim.y / 2
+		m = self.styleSheet.margin
+		x = self.pos.x + m
+		y = self.pos.y + m
+		w = self.dim.x - m * 2
+		h = self.dim.y - m * 2
+		if (w <= 0 or h <= 0):
+			self.diff = False
+			return
+
+		xunit = w / 4
+		yunit = h / 2
 		color = self.styleSheet.onColor if self.on else self.styleSheet.offColor
-		draw.circle(screen, color, (self.pos.x + xunit, self.pos.y + yunit), xunit)
-		draw.circle(screen, color, (self.pos.x + xunit * 3, self.pos.y + yunit), xunit)
-		draw.rect(screen, color, (self.pos.x + xunit, self.pos.y, xunit * 2, yunit * 2))
+		draw.circle(screen, color, (x + xunit, y + yunit), xunit)
+		draw.circle(screen, color, (x + xunit * 3, y + yunit), xunit)
+		draw.rect(screen, color, (x + xunit, y, xunit * 2, yunit * 2))
 		draw.circle(screen, self.styleSheet.nodeColor,
-		            (self.pos.x + xunit * 3, self.pos.y + yunit) if self.on else (self.pos.x + xunit, self.pos.y + yunit),
-					xunit - self.styleSheet.nodePadding)
+		            (x + xunit * 3, y + yunit) if self.on else (x + xunit, y + yunit),
+		            xunit - self.styleSheet.nodePadding)
 		self.diff = False
 
 	# ================ Geometry ================
 
 	def activateLayout(self):
 		'''
-		Applying the constraint of strict 1 : 2 geometry
+		Applying the constraint of strict 1 : 2 geometry (inner drawable area)
 		'''
-		unit = min(self.dim.x / 2, self.dim.y)
-		self.pos = ivec2(self.pos.x + self.dim.x / 2 - unit,
-		                 self.pos.y + self.dim.y / 2 - unit / 2)
-		self.dim = ivec2(unit * 2, unit)
+		m = self.styleSheet.margin
+		innerW = self.dim.x - m * 2
+		innerH = self.dim.y - m * 2
+		if (innerW <= 0 or innerH <= 0): return
+
+		unit = min(innerW / 2, innerH)
+		self.dim = ivec2(unit * 2 + m * 2, unit + m * 2)
 		self.diff = True
 
 	# ================ Style ================
@@ -928,7 +939,7 @@ class SliderWidgetBase(RectWidgetBase):
 		self.dragger.pos = ivec2(self.pos.x, self.pos.y)
 		self.dragger.dim = ivec2(self.dim.x * (self.draggerPortion if not self.Axis else 1) + (not self.Axis) * margin * 2,
 		          			     self.dim.y * (self.draggerPortion if self.Axis else 1) + (self.Axis) * margin * 2)
-
+		SliderWidgetBase.setValue(self, self.value)
 
 	# ================ Public Interface ================
 
@@ -1287,6 +1298,9 @@ class ScrollLayout(RectWidgetRigidUnitedVLayout):
 			w.move(ivec2(0, diff))
 			w.subWidgetHandleMouseDisplacement(ivec2.fromTuple(pygame.mouse.get_pos()))
 		self.diff = True
+
+	def resetScroll(self):
+		self.scrollToWidget(self.widgets[0])
 
 @dataclass(slots=True)
 class RectWidgetHolder(RectWidgetBase):

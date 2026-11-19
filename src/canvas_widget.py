@@ -63,7 +63,7 @@ class CanvasWidget(RectWidgetBase):
 		# cache validated; draw from cache
 		viewportPos: ivec2 = toIvec2(self.cameraState.pos * self.cameraState.scale) # topLeft
 		viewportDim: ivec2 = toIvec2(vec2(self.dim.x, self.dim.y))
-		screen.blit(self.uniform.engine.canvasCache.canvas, self.pos.toTuple(), makeRect(viewportPos, viewportDim))
+		screen.blit(self.uniform.engine.view(), self.pos.toTuple(), makeRect(viewportPos, viewportDim))
 
 		self.diff = False
 
@@ -99,7 +99,7 @@ class CanvasWidget(RectWidgetBase):
 			case pygame.MOUSEBUTTONUP: # State uninit
 				match (event.button):
 					case 1:  # Left Click
-						if (len(self.uniform.engineState) > 1): self.uniform.engineState.pop()
+						self.handler.handleMouseUp(self.findVPPosFromHanlder_impl(event.pos))
 					case 2:  # Middle Click
 						if (self.uniform.engineState[-1] == EngineState.Drag): self.uniform.engineState.pop()
 					case 3:  # Right Click
@@ -107,12 +107,15 @@ class CanvasWidget(RectWidgetBase):
 			case pygame.MOUSEMOTION: # State perform
 				match (self.uniform.engineState[-1]):
 					case EngineState.Normal:
+						#print("normal")
 						pass
 					case EngineState.Drag:
+						#print("drag")
 						diff: vec2 = vec2.fromTuple(event.rel) / self.cameraState.scale
 						self.cameraState.pos -= diff
 						self.diff = True
 					case EngineState.Edit:
+						#print("edit")
 						self.handler.handleMouseMotion(self.findVPPosFromHanlder_impl(event.pos))
 						self.diff = True
 								
