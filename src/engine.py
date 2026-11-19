@@ -26,6 +26,9 @@ One engine instance manages one document.
 
 @dataclass(slots=True)
 class Engine:
+	def __post_init__(self):
+		self.initBufferList()
+	
 	# ================ Camera System ================
 	
 	@dataclass(slots=True)
@@ -59,11 +62,12 @@ class Engine:
 		self.render_impl(self.canvasCache.canvas, scale)
 		return self.canvasCache.canvas
 	#def redraw(self, scale: float) -> pygame.Surface:
-	#	scale *= 2
+	#	scaleFactor = 1.5
+	#	scale *= scaleFactor
 	#	self.canvasCache = self.CanvasCache(
 	#		scale, pygame.Surface((self.canvasState.dim * scale).toIvec2().toTuple(), pygame.SRCALPHA))
 	#	self.render_impl(self.canvasCache.canvas, scale)
-	#	self.canvasCache.canvas = pygame.transform.smoothscale(self.canvasCache.canvas, (self.canvasState.dim * scale * 0.5).toIvec2().toTuple())
+	#	self.canvasCache.canvas = pygame.transform.smoothscale(self.canvasCache.canvas, (self.canvasState.dim * scale / scaleFactor).toIvec2().toTuple())
 	#	return self.canvasCache.canvas
 
 	# ================ Implementation Utility ================
@@ -72,11 +76,34 @@ class Engine:
 	def scalePos_impl(pos: vec2, scale: float) -> tuple[int, int]:
 		return (pos * scale).toIvec2().toTuple()
 
+	# ================ Object Sequence ================
+	'''
+	Using indices here instead of direct pointers for the ability to save to
+	file.
+	
+	typeIndex:
+	Each tool has a dedicted ID. Their buffer will register in a centralized
+	list of buffers to be accessed via index directly
+	'''
+
+	bufferList: list[list] = field(default_factory=list)
+
+	def initBufferList(self):
+		self.bufferList.append(self.strokeData)
+		self.bufferList.append(self.rectData)
+
+	@dataclass(slots=True)
+	class ObjectIndex:
+		typeIndex: int = 0
+		index: int = 0
+
+	objectSequence: list[ObjectIndex] = field(default_factory=list)
+
 	# ================ Tools ================
 	'''
 	Contract Interface Convention:
 	Each tool must possess the following contract interface:
-	- <name>Render(canvas, scale) # for full redraw
+	- <name>Object.render(canvas, scale) # for full redraw
 
 	Additionally, each tool should provide at least one public interface to
 	perform actions with the tool.
@@ -96,7 +123,7 @@ class Engine:
 	def drawCircle(self, pos: vec2):
 		self.circle = pos
 		pygame.draw.circle(self.canvasCache.canvas, White, (self.circle * self.canvasCache.scale).toTuple(), 64 * self.canvasCache.scale)
-	
+
 	# ---------------- Stroke ----------------
 
 	@dataclass(slots=True)
@@ -110,10 +137,16 @@ class Engine:
 		color: Color = Black
 		width: float = 16
 
+		# contract interface
+		def render(self, canvas: pygame.Surface, scale: float):
+			Engine.strokeDrawSingle_impl(canvas, scale, self)
+			
+
 	strokeData: list[StrokeObject] = field(default_factory=list)
 
 	# public interface
 	def strokeCreate(self, initPos: vec2, config: StrokeConfig):
+		self.objectSequence.append(self.ObjectIndex(0, len(self.strokeData)))
 		self.strokeData.append(self.StrokeObject(vertices=[initPos], color=config.color, width=config.width))
 		pygame.draw.circle(self.canvasCache.canvas, config.color,
 			Engine.scalePos_impl(initPos, self.canvasCache.scale), (config.width / 2 * self.canvasCache.scale))
@@ -127,8 +160,6 @@ class Engine:
 		)
 
 	# rendering
-	def strokeRender(self, canvas: pygame.Surface, scale: float):
-		for obj in self.strokeData: Engine.strokeDrawSingle_impl(canvas, scale, obj)
 	@staticmethod
 	def strokeDrawSingle_impl(canvas: pygame.Surface, scale: float, object: StrokeObject):
 		pygame.draw.circle(canvas, object.color,
@@ -153,10 +184,44 @@ class Engine:
 
 		pygame.draw.circle(canvas, color,
 			Engine.scalePos_impl(v2, scale), int(width / 2 * scale))
-		
-		
-	
-					
+
+	# ---------------- Rectangle ----------------
+
+	@dataclass(slots=True)
+	class RectConfig:
+		color: Color = Black
+		hollow: bool = False
+		hollowWidth: float = 0.0
+
+	@dataclass(slots=True)
+	class RectObject:
+		pos: vec2 = field(default_factory=vec2)
+		dim: vec2 = field(default_factory=vec2)
+		conf: Engine.RectConfig | None = None
+
+	rectData: list[RectObject] = field(default_factory=list)
+
+	@staticmethod
+	def findRect(pa: vec2, pb: vec2):
+		topLeft = vec2(min(pa.x, pb.x), min(pa.y, pb.y))
+		bottomRight = vec2(max(pa.x, pb.x), max(pa.y, pb.y))
+		return (topLeft, bottomRight - topLeft)
+				
+
+	# public interface
+	def rectCreate(self, pa: vec2, config: RectConfig):
+		self.objectSequence.append(self.ObjectIndex(0, len(self.strokeData)))
+		self.rectData.append(self.RectObject(pos=pa, config=config))
+	def rectFinish(self, pb: vec2):
+		pos, dim = self.findRect(self.rectData[-1].pos, pb)
+		self.rectData[-1].pos = pos
+		self.rectData[-1].dim = dim
+
+	# rendering
+	def rectRender(self, canvas: pygame.Surface, scale: float, index: int):
+		pass
+
+
 
 	# ================ Master Rendering ================
 
@@ -165,4 +230,9 @@ class Engine:
 		#canvas.blit(pygame.transform.scale(pygame.image.load("/home/TX_Jerry/chen.bmp").convert(), canvas.get_size()))
 		if (self.circle is not None):
 			pygame.draw.circle(canvas, White, (self.circle * scale).toTuple(), 64 * self.canvasCache.scale)
-		self.strokeRender(canvas, scale)
+		
+		# actual rendering
+		# ---------------- Sequencial Rendering ----------------
+
+		for object in self.objectSequence:
+			self.bufferList[object.typeIndex][object.index].render(canvas, scale)
