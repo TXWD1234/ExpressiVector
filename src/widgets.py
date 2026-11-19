@@ -108,6 +108,7 @@ class SidebarWidget(ScrollLayout):
 	# ================ Contract Interface ================
 
 	def __post_init__(self):
+		self.addTool_impl("assets/file-op-icon.png", EditStateTag.FileOp)
 		self.addTool_impl("assets/stroke-tool-icon.png", EditStateTag.Stroke)
 		self.addTool_impl("assets/rect-tool-icon.png", EditStateTag.Rect)
 
@@ -674,11 +675,13 @@ class FileExplorerExplorer(ScrollLayout):
 	selectedEntry: FileExplorerEntry | None = None
 
 	onPathChange: Callable[[Path], None] = lambda p: None
+	onSelection:  Callable[[Path], None] = lambda p: None
 
 	def handleSelection_impl(self, w: FileExplorerEntry):
 		if (self.selectedEntry is not None):
 			self.selectedEntry.unselect()
 		self.selectedEntry = w
+		self.onSelection(w.path)
 	def handleUnselection_impl(self, w: FileExplorerEntry):
 		self.selectedEntry = None
 
@@ -728,6 +731,7 @@ class FileExplorerWidgetContent(RectWidgetVLayout):
 	backwardButton: IconedPushButtonWidget | None = field(init=False, default=None)
 	pathBar:        LineEditWidget         | None = field(init=False, default=None)
 	explorer:       FileExplorerExplorer   | None = field(init=False, default=None)
+	resultBar:      LineEditWidget         | None = field(init=False, default=None)
 
 	confirm: ConfirmationWidget | None = field(init=False, default=None)
 
@@ -736,7 +740,8 @@ class FileExplorerWidgetContent(RectWidgetVLayout):
 	history: list[Path] = field(default_factory=lambda: [Path.home()])
 	historyIndex: int = 0
 
-	resultPath: Path | None = None
+	resultPath: Path | None = None # public interface for others to inspect
+	defaultResult: str | None = None # only used for selecting save destination
 
 	# interface
 	onConfirm: Callable[[], None] | Callable[[Self], None] = lambda: None
@@ -746,6 +751,7 @@ class FileExplorerWidgetContent(RectWidgetVLayout):
 	def updatePath_impl(self):
 		self.explorer.setPath(self.path)
 		self.pathBar.setText(str(self.path.absolute()))
+		self.resultBar.setText(str((self.path / self.defaultResult if self.defaultResult is not None else self.path).absolute()))
 
 	def forwardHistory_impl(self):
 		if (self.historyIndex == len(self.history) - 1): return
@@ -774,8 +780,10 @@ class FileExplorerWidgetContent(RectWidgetVLayout):
 		else:
 			self.resultPath = path
 			optionalCall(self.onConfirm, self)
-		
 
+	def handlePathSelection_impl(self, path: Path):
+		self.resultPath = path
+		self.resultBar.setText(str(path.absolute()))
 
 	# ================ Contract Interface ================
 
@@ -812,13 +820,22 @@ class FileExplorerWidgetContent(RectWidgetVLayout):
 
 		self.explorer = self.addWidget(
 			LinearLayoutAttribute(), FileExplorerExplorer,
-			onPathChange=self.handleExplorerPathChange_impl)
+			onPathChange=self.handleExplorerPathChange_impl,
+			onSelection=self.handlePathSelection_impl)
 		self.explorer.setPath(self.path)
 
+		self.resultBar = self.addWidget(
+			LinearLayoutAttribute(proportion=0.05, absolute=True), LineEditWidget)
+		self.resultBar.setText(str((self.path / self.defaultResult if self.defaultResult is not None else self.path).absolute()))
+		
 		def handleConfirmAction():
+			self.defaultResult = None
 			if (self.confirm.confirmed):
-				if (self.explorer.selectedEntry is None): return
-				self.resultPath = self.explorer.selectedEntry.path
+				# if (self.explorer.selectedEntry is None):
+				# 	if (self.defaultResult is None): return
+				# else: self.resultPath = self.explorer.selectedEntry.path
+				self.resultPath = Path(self.resultBar.text)
+				#print(self.resultPath)
 				optionalCall(self.onConfirm, self)
 			else: optionalCall(self.onCancel, self)
 
@@ -841,6 +858,7 @@ class FileExplorerWidgetContent(RectWidgetVLayout):
 		self.setPath(Path.home())
 		self.historyIndex = 0
 		self.history = [Path.home()]
+
 
 
 
@@ -1041,6 +1059,41 @@ class ApplicationWidget(RectWidgetHLayout):
 
 		self.initAddColorField_impl(section, EditStateTag.Rect)
 
+	def initFileOp_impl(self):
+		section = self.addSection_impl(self.mainPanel, "File", EditStateTag.FileOp)
+
+		def handleNew():
+			self.canvasWidget.clear()
+		def handleOpen():
+			def open(path: Path):
+				self.uniform.engine.read(path)
+				self.canvasWidget.diff = True
+			self.requestFileExplore_impl(open)
+		def handleSave():
+			self.setFileExploreDefaultResult("image.ev")
+			self.requestFileExplore_impl(self.uniform.engine.write)
+		def handleExport():
+			self.setFileExploreDefaultResult("image.png")
+			self.requestFileExplore_impl(self.uniform.engine.export)
+
+		# this really shows how desperate I am at this point
+		@dataclass(slots=True)
+		class MyLabeledPushButtonWidget(LabeledPushButtonWidget):
+			def reportHeight(self): return 1.5
+			def __post_init__(self):
+				super().__post_init__()
+				self.overlay.styleSheet.fontSize = int(self.uniform.fontSize * 0.7)
+
+		styleSheet = LabeledPushButtonWidget.StyleSheet(
+			backgroundColor=(0x53, 0x54, 0x55), hoverColor=(0x6e, 0x6e, 0x6f), pressColor=(0x8e, 0x8e, 0x8f),
+			borderWidth=2, borderColor=(0x6e, 0x6e, 0x6f), hoverBorderColor=(0xbe, 0xbe, 0xbf),
+			roundCornerRadius=16, margin=6, textMargin=5)
+		
+		section.content.addWidget(UnitedLinearLayoutAttribute(), MyLabeledPushButtonWidget, text="New",    onPress=handleNew   ).styleSheet = styleSheet
+		section.content.addWidget(UnitedLinearLayoutAttribute(), MyLabeledPushButtonWidget, text="Open",   onPress=handleOpen  ).styleSheet = styleSheet
+		section.content.addWidget(UnitedLinearLayoutAttribute(), MyLabeledPushButtonWidget, text="Save",   onPress=handleSave  ).styleSheet = styleSheet
+		section.content.addWidget(UnitedLinearLayoutAttribute(), MyLabeledPushButtonWidget, text="Export", onPress=handleExport).styleSheet = styleSheet
+
 	def initColorPick_impl(self):
 		self.colorPickPanel = self.addPanel_impl()
 		section = self.colorPickPanel.addWidget(UnitedLinearLayoutAttribute(), ConfigSection, name="Color Picker")
@@ -1071,6 +1124,7 @@ class ApplicationWidget(RectWidgetHLayout):
 			if (self.uniform.editStateTag[-1] == EditStateTag.FileExplore):
 				self.uniform.editStateTag.pop()
 			self.isOrdinaryPanelState = True
+			content.reset()
 			self.switchPanel_impl(self.mainPanel)
 		def confirm():
 			cancel()
@@ -1079,7 +1133,10 @@ class ApplicationWidget(RectWidgetHLayout):
 		section.content = content
 
 		self.fileExplorerProvideGetter = lambda: content.resultPath
-
+		def setDefault(name: str):
+			content.defaultResult = name
+		self.fileExplorerDefaultSetter = setDefault
+		self.fileExplorerResetter = content.reset
 
 	def __post_init__(self):
 		self.canvasWidget = self.addWidget(LinearLayoutAttribute(order=0), CanvasWidget)
@@ -1090,6 +1147,7 @@ class ApplicationWidget(RectWidgetHLayout):
 
 		self.mainPanel = self.addPanel_impl()
 		self.configWidget = self.mainPanel
+		self.initFileOp_impl()
 		self.initStroke_impl()
 		self.initRect_impl()
 
@@ -1162,11 +1220,17 @@ class ApplicationWidget(RectWidgetHLayout):
 		self.uniform.editStateTag.append(EditStateTag.FileExplore)
 		self.fileExplorerRequestSetter = setter
 		self.isOrdinaryPanelState = False
+		self.fileExplorerResetter()
 		self.switchPanel_impl(self.fileExplorerPanel)
 
 	def provideFileExplore_impl(self):
 		self.fileExplorerRequestSetter(self.fileExplorerProvideGetter())
 
+	fileExplorerDefaultSetter:   Callable[[str], None] | None = field(init=False, default=None)
+	fileExplorerResetter:        Callable[[]   , None] | None = field(init=False, default=None)
+
+	def setFileExploreDefaultResult(self, name: str):
+		self.fileExplorerDefaultSetter(name)
 	
 
 theme: WidgetTheme = {

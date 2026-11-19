@@ -83,6 +83,12 @@ class Engine:
 		if (self.viewProvider is not None): return self.viewProvider()
 		return self.canvasCache.canvas
 
+	def clear(self):
+		self.objectSequence.clear()
+		for buffer in self.bufferList:
+			buffer.clear()
+		self.redraw(1.0)
+
 	# ================ Implementation Utility ================
 
 	@staticmethod
@@ -500,6 +506,10 @@ class Engine:
 		self.strokeWrite(f)
 		self.rectWrite(f)
 
+	def write(self, path: Path):
+		with open(path, "wb") as f:
+			self.write_impl(f)
+
 	# ---------------- Read ----------------
 
 	@staticmethod
@@ -537,4 +547,15 @@ class Engine:
 		self.rectRead(f)
 
 		self.initBufferList()
-		self.redraw()
+		self.redraw(1.0)
+
+	def read(self, path: Path):
+		with open(path, "rb") as f:
+			self.read_impl(f)
+
+	# ---------------- Export ----------------
+
+	def export(self, path: Path):
+		surface = pygame.Surface((self.canvasState.dim * 1.0).toIvec2().toTuple(), pygame.SRCALPHA)
+		self.render_impl(surface, 1.0)
+		pygame.image.save(surface, path)

@@ -19,6 +19,7 @@ class EditStateTag(Enum):
 	Rect = auto()
 	ColorPick = auto()
 	FileExplore = auto()
+	FileOp = auto()
 
 # ################ Globals ################
 

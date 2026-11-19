@@ -133,14 +133,14 @@ class RectWidgetBase(WidgetBase):
 		for w in self.widgets: w.activateLayout()
 		self.diff = True
 
-	def reportHeight(self): return 0
+	def reportHeight(self): return 1
 
 	# ================ Public Interface ================
 
 	def addWidget[T: RectWidgetBase](self, widgetType: type[T], **args) -> T:
 		widget = super().addWidget(widgetType, **({
 			"theme": self.theme,
-			"styleSheet": replace(self.theme[widgetType])
+			"styleSheet": replace(self.theme[widgetType]) if widgetType in self.theme else None
 		} | args))
 		return widget
 
@@ -554,7 +554,8 @@ class LabelOverlay(OverlayBase):
 		    parent.dim.x - (self.styleSheet.margin + parent.styleSheet.margin) * 2 - 
 			self.styleSheet.indentation):
 			prevClip = screen.get_clip()
-			screen.set_clip(makeMarginedRect(parent.pos, parent.dim, parent.styleSheet.margin + self.styleSheet.margin))
+			screen.set_clip(prevClip.clip(
+				makeMarginedRect(parent.pos, parent.dim, parent.styleSheet.margin + self.styleSheet.margin)))
 
 			screen.blit(self.texture,
 			            dest=(parent.pos.x + parent.dim.x - self.styleSheet.margin - self.styleSheet.indentation - self.texture.get_width(),
@@ -569,7 +570,7 @@ class LabelOverlay(OverlayBase):
 			                  parent.pos.y + (parent.dim.y - self.styleSheet.margin * 2 -
 			                                  self.texture.get_height()) // 2 + self.styleSheet.margin))
 		self.diff = False
-	
+
 	# ================ Public Interface ================
 
 	def setText(self, text: str, width: int = 0) -> int:

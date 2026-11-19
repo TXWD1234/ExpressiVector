@@ -121,3 +121,10 @@ class CanvasWidget(RectWidgetBase):
 								
 	def update(self):
 		super().update()
+
+	# ================ Public Interface ================
+
+	def clear(self):
+		self.cameraState.pos = vec2(0.0, 0.0)
+		self.cameraState.scale = 1.0
+		self.uniform.engine.clear()
