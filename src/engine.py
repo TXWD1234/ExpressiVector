@@ -5,7 +5,9 @@ from .rgb import *
 from .infrastructure import *
 import pygame
 from dataclasses import dataclass, field, replace
-from typing import Callable
+from typing import Callable, BinaryIO
+import struct
+import array
 
 # ================================================================
 # **************** Expressive Vector Image Engine ****************
@@ -104,6 +106,7 @@ class Engine:
 	bufferList: list[list] = field(default_factory=list)
 
 	def initBufferList(self):
+		self.bufferList.clear()
 		self.bufferList.append(self.strokeData)
 		self.bufferList.append(self.rectData)
 
@@ -112,7 +115,32 @@ class Engine:
 		typeIndex: int = 0
 		index: int = 0
 
+		def serialize(self, buf: list[int]):
+			buf.append(self.typeIndex)
+			buf.append(self.index)
+		@staticmethod
+		def load(bufIndex: Ptr[int], buf: array.array):
+			res = Engine.ObjectIndex(buf[bufIndex.v], buf[bufIndex.v + 1])
+			bufIndex.v += 2
+			return res
+
 	objectSequence: list[ObjectIndex] = field(default_factory=list)
+
+	def objectSequenceSerialize(self) -> list[int]:
+		res = []
+		for i in self.objectSequence: i.serialize(res)
+		return res
+
+	def objectSequenceWrite(self, f: BinaryIO):
+		Engine.writeIntBuffer_impl(f, self.objectSequenceSerialize(), len(self.objectSequence))
+
+	def objectSequenceLoad(self, buf: array.array, size: int):
+		index = Ptr[int](v=0)
+		self.objectSequence = [Engine.ObjectIndex.load(index, buf) for _ in range(size)]
+
+	def objectSequenceRead(self, f: BinaryIO):
+		buf, size = Engine.readIntBuffer_impl(f)
+		self.objectSequenceLoad(buf, size)
 
 	# ================ Tools ================
 	'''
@@ -155,8 +183,40 @@ class Engine:
 		# contract interface
 		def render(self, canvas: pygame.Surface, scale: float):
 			Engine.strokeDrawSingle_impl(canvas, scale, self)
-			
+
+		def serialize(self, buf: list[float], ibuf: list[int]):
+			Engine.serializeVec2List_impl(buf, ibuf, self.vertices)
+			Engine.serializeColor_impl(buf, self.color)
+			Engine.serializeFloat_impl(buf, self.width)
+		@staticmethod
+		def load(bufIndex: Ptr[int], ibufIndex: Ptr[int],
+				 buf: array.array, ibuf: array.array):
+			return Engine.StrokeObject(
+				Engine.loadVec2List_impl(bufIndex, ibufIndex, buf, ibuf),
+				Engine.loadColor_impl(bufIndex, buf),
+				Engine.loadFloat_impl(bufIndex, buf))
+
 	strokeData: list[StrokeObject] = field(default_factory=list)
+
+	# save/open
+	def strokeSerialize(self) -> tuple[list[float], list[int]]:
+		res = []
+		ires = []
+		for i in self.strokeData: i.serialize(res, ires)
+		return (res, ires)
+
+	def strokeWrite(self, f: BinaryIO):
+		buf, ibuf = self.strokeSerialize()
+		Engine.writeFloatBufferList_impl(f, buf, ibuf, len(self.strokeData))
+
+	def strokeLoad(self, buf: array.array, ibuf: array.array, size: int):
+		index = Ptr[int](v=0)
+		iindex = Ptr[int](v=0)
+		self.strokeData = [Engine.StrokeObject.load(index, iindex, buf, ibuf) for _ in range(size)]
+
+	def strokeRead(self, f: BinaryIO):
+		buf, ibuf, size = Engine.readFloatBufferList_impl(f)
+		self.strokeLoad(buf, ibuf, size)
 
 	# public interface
 	def strokeCreate(self, initPos: vec2, config: StrokeConfig):
@@ -207,6 +267,16 @@ class Engine:
 		hollow: bool = False
 		hollowWidth: float = 0.0
 
+		def serialize(self, buf: list[float]):
+			Engine.serializeColor_impl(buf, self.color)
+			Engine.serializeFloat_impl(buf, self.hollowWidth if self.hollow else 0.0)
+		@staticmethod
+		def load(bufIndex: Ptr[int], buf: array.array):
+			return Engine.RectConfig(
+				color=Engine.loadColor_impl(bufIndex, buf),
+				hollowWidth=(width := Engine.loadFloat_impl(bufIndex, buf)),
+				hollow=(width != 0.0))
+
 	@dataclass(slots=True)
 	class RectObject:
 		pos: vec2 = field(default_factory=vec2)
@@ -216,21 +286,49 @@ class Engine:
 		def render(self, canvas: pygame.Surface, scale: float):
 			Engine.rectDrawSingle_impl(canvas, scale, self)
 
+		def serialize(self, buf: list[float]):
+			Engine.serializeVec2_impl(buf, self.pos)
+			Engine.serializeVec2_impl(buf, self.dim)
+			self.conf.serialize(buf)
+		@staticmethod
+		def load(bufIndex: Ptr[int], buf: array.array):
+			return Engine.RectObject(
+				Engine.loadVec2_impl(bufIndex, buf),
+				Engine.loadVec2_impl(bufIndex, buf),
+				Engine.RectConfig.load(bufIndex, buf))
+
 	rectData: list[RectObject] = field(default_factory=list)
 
+	# save/open
+	def rectSerialize(self) -> list[float]:
+		res = []
+		for i in self.rectData: i.serialize(res)
+		return res
+
+	def rectWrite(self, f: BinaryIO):
+		Engine.writeFloatBuffer_impl(f, self.rectSerialize(), len(self.rectData))
+
+	def rectLoad(self, buf: array.array, size: int):
+		index = Ptr[int](v=0)
+		self.rectData = [Engine.RectObject.load(index, buf) for _ in range(size)]
+
+	def rectRead(self, f: BinaryIO):
+		buf, size = Engine.readFloatBuffer_impl(f)
+		self.rectLoad(buf, size)
+
 	@staticmethod
-	def findRect(pa: vec2, pb: vec2):
+	def rectFindRect_impl(pa: vec2, pb: vec2):
 		topLeft = vec2(min(pa.x, pb.x), min(pa.y, pb.y))
 		bottomRight = vec2(max(pa.x, pb.x), max(pa.y, pb.y))
 		return (topLeft, bottomRight - topLeft)
-				
+
 	# public interface
 	def rectCreate(self, pa: vec2, config: RectConfig):
 		self.objectSequence.append(self.ObjectIndex(1, len(self.rectData)))
 		self.rectData.append(self.RectObject(pos=pa, conf=replace(config)))
 		self.viewProvider = self.rectPreview
 	def rectFinish(self, pb: vec2):
-		pos, dim = self.findRect(self.rectData[-1].pos, pb)
+		pos, dim = self.rectFindRect_impl(self.rectData[-1].pos, pb)
 		self.rectData[-1].pos = pos
 		self.rectData[-1].dim = dim
 		self.rectDrawSingle_impl(self.canvasCache.canvas, self.canvasCache.scale, self.rectData[-1])
@@ -245,7 +343,7 @@ class Engine:
 	def rectPreview(self) -> pygame.Surface:
 		if (self.rectPreviewPb is None): return self.canvasCache.canvas
 		preview = self.canvasCache.canvas.copy()
-		pos, dim = self.findRect(self.rectData[-1].pos, self.rectPreviewPb)
+		pos, dim = self.rectFindRect_impl(self.rectData[-1].pos, self.rectPreviewPb)
 		Engine.rectDrawSingle_impl(preview, self.canvasCache.scale,
 		                           self.RectObject(pos, dim, self.rectData[-1].conf))
 		return preview
@@ -271,3 +369,172 @@ class Engine:
 
 		for object in self.objectSequence:
 			self.bufferList[object.typeIndex][object.index].render(canvas, scale)
+
+	# ================ Binary Serialization Utility ================
+	'''
+	Binary Serialization serves for the save/open feature of the project.
+	It handles the soft formatting part of the pipeline, converting buffers
+	of primitives into engine data.
+	The terminology of Binary Serialization is: serialize/load.
+	'''
+
+	# ---------------- Serialize ----------------
+
+	@staticmethod
+	def serializeFloat_impl(buf: list[float], v: float):
+		buf.append(v)
+
+	@staticmethod
+	def serializeVec2_impl(buf: list[float], v: vec2):
+		buf.append(v.x)
+		buf.append(v.y)
+
+	@staticmethod
+	def serializeColor_impl(buf: list[float], color: Color):
+		c = pygame.Color(color)
+		buf.append(float(c.r))
+		buf.append(float(c.g))
+		buf.append(float(c.b))
+		buf.append(float(c.a))
+
+	'''
+	All lists serialization based on fbuffer must have an index header
+	somewhere else.
+	'''
+
+	@staticmethod
+	def serializeFloatList_impl(buf: list[float], ibuf: list[int], flist: list[float]):
+		ibuf.append(len(flist))
+		buf.extend(flist)
+
+	@staticmethod
+	def serializeVec2List_impl(buf: list[float], ibuf: list[int], vlist: list[vec2]):
+		ibuf.append(len(vlist) * 2)
+		buf.extend(f for v in vlist for f in (v.x, v.y))
+
+	# ---------------- Load ----------------
+
+	@staticmethod
+	def loadFloat_impl(bufIndex: Ptr[int], buf: array.array) -> float:
+		res = buf[bufIndex.v]
+		bufIndex.v += 1
+		return res
+
+	@staticmethod
+	def loadVec2_impl(bufIndex: Ptr[int], buf: array.array) -> vec2:
+		res = vec2(buf[bufIndex.v], buf[bufIndex.v + 1])
+		bufIndex.v += 2
+		return res
+	
+	@staticmethod
+	def loadColor_impl(bufIndex: Ptr[int], buf: array.array) -> Color:
+		res = (int(buf[bufIndex.v]), int(buf[bufIndex.v + 1]),
+		       int(buf[bufIndex.v + 2]), int(buf[bufIndex.v + 3]))
+		bufIndex.v += 4
+		return res
+
+	@staticmethod
+	def loadFloatList_impl(
+		bufIndex: Ptr[int], ibufIndex: Ptr[int],
+		buf: array.array, ibuf: array.array) -> list[vec2]:
+		size = ibuf[ibufIndex.v]
+		ibufIndex.v += 1
+
+		res = [buf[i] for i in range(bufIndex.v, bufIndex.v + size)]
+
+		bufIndex.v += size
+		return res
+
+	@staticmethod
+	def loadVec2List_impl(
+		bufIndex: Ptr[int], ibufIndex: Ptr[int],
+		buf: array.array, ibuf: array.array) -> list[vec2]:
+		size = ibuf[ibufIndex.v]
+		ibufIndex.v += 1
+
+		res = [vec2(buf[i], buf[i + 1]) for i in range(bufIndex.v, bufIndex.v + size, 2)]
+
+		bufIndex.v += size
+		return res
+
+	# ================ File IO ================
+	'''
+	File IO serves for the save/open feature of the project.
+	It handles the firm file read/write part of the pipeline, operating on file
+	handle and forward the data to Binary Serialization.
+	The terminology of Binary Serialization is: write/read.
+	'''
+	
+	# ---------------- Write ----------------
+	'''
+	All sizes are element size, meaning the count of engine objects, distinguish
+	from byte count or primitive count.
+	'''
+
+	@staticmethod
+	def writeFloatBuffer_impl(f: BinaryIO, buf: list[float], size: int):
+		f.write(struct.pack("<2I", size, len(buf)))
+		if (size > 0): array.array("f", buf).tofile(f)
+
+	@staticmethod
+	def writeIntBuffer_impl(f: BinaryIO, buf: list[int], size: int):
+		f.write(struct.pack("<2I", size, len(buf)))
+		if (size > 0): array.array("i", buf).tofile(f)
+
+	@staticmethod
+	def writeFloatBufferList_impl(f: BinaryIO, buf: list, ibuf: list[int], size: int):
+		f.write(struct.pack("<3I", size, len(buf), len(ibuf)))
+		if (size > 0):
+			array.array("f", buf).tofile(f)
+			array.array("i", ibuf).tofile(f)
+
+	def writeDocHeader_impl(self, f: BinaryIO):
+		# format identifier
+		f.write(b"EVDOC")
+		# document dimension
+		f.write(struct.pack("<2f", self.canvasState.dim.x, self.canvasState.dim.y))
+
+	def write_impl(self, f: BinaryIO):
+		self.writeDocHeader_impl(f)
+		self.objectSequenceWrite(f)
+		self.strokeWrite(f)
+		self.rectWrite(f)
+
+	# ---------------- Read ----------------
+
+	@staticmethod
+	def readFloatBuffer_impl(f: BinaryIO) -> tuple[array.array, int]:
+		elemSize, bufSize = struct.unpack("<2I", f.read(8))
+		buf = array.array("f")
+		buf.fromfile(f, bufSize)
+		return buf, elemSize
+
+	@staticmethod
+	def readIntBuffer_impl(f: BinaryIO) -> tuple[array.array, int]:
+		elemSize, bufSize = struct.unpack("<2I", f.read(8))
+		buf = array.array("i")
+		buf.fromfile(f, bufSize)
+		return buf, elemSize
+
+	@staticmethod
+	def readFloatBufferList_impl(f: BinaryIO) -> tuple[array.array, array.array, int]:
+		elemSize, bufSize, ibufSize = struct.unpack("<3I", f.read(12))
+		buf = array.array("f")
+		ibuf = array.array("i")
+		buf.fromfile(f, bufSize)
+		ibuf.fromfile(f, ibufSize)
+		return buf, ibuf, elemSize
+
+	def readDocHeader_impl(self, f: BinaryIO) -> bool:
+		if (f.read(5) != b"EVDOC"): return False
+		self.canvasState.dim = vec2.fromTuple(struct.unpack("<2f", f.read(8)))
+		return True
+
+	def read_impl(self, f: BinaryIO):
+		if (not self.readDocHeader_impl(f)): return
+		self.objectSequenceRead(f)
+		self.strokeRead(f)
+		self.rectRead(f)
+
+		self.initBufferList()
+		self.redraw()
