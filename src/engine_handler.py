@@ -69,6 +69,7 @@ class EngineHandler:
 	inProgress: bool = False
 
 	def handleMouseDown(self, vpPos: vec2):
+		self.uniform.engine.previewPoint = vpPos
 		match (self.uniform.editStateTag[-1]):
 			case EditStateTag.Stroke:
 				self.uniform.engine.strokeCreate(
@@ -96,24 +97,20 @@ class EngineHandler:
 				self.endSession_impl()
 
 	def handleMouseMotion(self, vpPos: vec2):
+		self.uniform.engine.previewPoint = vpPos
 		match (self.uniform.editStateTag[-1]):
-			case EditStateTag.Stroke:
-				self.uniform.engine.strokeAppend(vpPos)
-			case EditStateTag.Rect:
-				self.uniform.engine.previewPoint = vpPos
+			case EditStateTag.Stroke: self.uniform.engine.strokeAppend(vpPos)
+			case EditStateTag.Rect: pass
 			case EditStateTag.Stamp:
 				if (self.uniform.editState[EditStateTag.Stamp].textureId == -1): return
-				self.uniform.engine.previewPoint = vpPos
 				self.uniform.engine.stampCreate(
 					vpPos, self.uniform.editState[EditStateTag.Stamp])
 
 	# @return diff
 	def handleMouseMotionNormal(self, vpPos: vec2) -> bool:
+		self.uniform.engine.previewPoint = vpPos
 		match (self.uniform.editStateTag[-1]):
-			case EditStateTag.Stroke: pass
+			case EditStateTag.Stroke: return True
 			case EditStateTag.Rect: pass
-			case EditStateTag.Stamp:
-				if (self.uniform.editState[EditStateTag.Stamp].textureId == -1): return
-				self.uniform.engine.previewPoint = vpPos
-				return True
+			case EditStateTag.Stamp: return True
 		return False

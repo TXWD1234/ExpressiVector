@@ -225,6 +225,20 @@ class Engine:
 			self.strokeData[-1].color, self.strokeData[-1].width
 		)
 
+	strokePreviewConfig: StrokeConfig | None = None
+	def strokeSetPreview(self, config: StrokeConfig):
+		self.strokePreviewConfig = config
+		self.viewProvider = self.strokePreview
+	def strokeStopPreview(self): self.viewProvider = None
+
+	def strokePreview(self) -> pygame.Surface:
+		if (self.previewPoint is None): return self.canvasCache.canvas
+		preview = self.canvasCache.canvas.copy()
+		pygame.draw.circle(preview, self.strokePreviewConfig.color,
+			Engine.scalePos_impl(self.previewPoint, self.canvasCache.scale),
+			(self.strokePreviewConfig.width / 2 * self.canvasCache.scale))
+		return preview
+
 	# rendering
 	@staticmethod
 	def strokeDrawSingle_impl(canvas: pygame.Surface, scale: float, object: StrokeObject):

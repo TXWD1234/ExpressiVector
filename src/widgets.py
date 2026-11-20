@@ -1170,6 +1170,12 @@ class ApplicationWidget(RectWidgetHLayout):
 
 	def initStroke_impl(self):
 		section = self.addSection_impl(self.mainPanel, "Stroke", EditStateTag.Stroke)
+
+		def activate():
+			self.uniform.engine.strokeSetPreview(
+				self.uniform.editState[EditStateTag.Stroke])
+		def deactivate():
+			self.uniform.engine.strokeStopPreview()
 		
 		def widthChange(w: IntegerFieldWidget):
 			self.uniform.editState[EditStateTag.Stroke].width = w.value
@@ -1184,6 +1190,10 @@ class ApplicationWidget(RectWidgetHLayout):
 
 		self.initAddColorField_impl(section, EditStateTag.Stroke)
 		self.initEraseToggle_impl(section, EditStateTag.Stroke)
+
+		self.toolActivationCallback[EditStateTag.Stroke] = activate
+		self.toolDeactivationCallback[EditStateTag.Stroke] = deactivate
+
 
 	rectDefaultInited: bool = False
 	def initRect_impl(self):
