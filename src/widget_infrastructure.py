@@ -1257,11 +1257,18 @@ class ScrollLayout(RectWidgetRigidUnitedVLayout):
 		Draw within range.
 		'''
 		prevClip = screen.get_clip()
-		screen.set_clip(makeRect(self.pos, self.dim))
+		screen.set_clip(prevClip.clip(makeRect(self.pos, self.dim)))
 		
 		#RectWidgetBase.draw(self, screen)
 		super().draw(screen)
 
+		screen.set_clip(prevClip)
+
+	def render(self, screen: pygame.Surface):
+		if (not self.visible()): return
+		prevClip = screen.get_clip()
+		screen.set_clip(prevClip.clip(makeRect(self.pos, self.dim)))
+		super().render(screen)
 		screen.set_clip(prevClip)
 
 	def handleEvent(self, event):
@@ -1277,6 +1284,7 @@ class ScrollLayout(RectWidgetRigidUnitedVLayout):
 								w.move(ivec2(0, min(self.styleSheet.scrollVel, diff)))
 								w.subWidgetHandleMouseDisplacement(ivec2.fromTuple(pygame.mouse.get_pos()))
 							self.diff = True
+						return True
 					case 5:  # Scroll Down
 						diff: int = max(w.pos.y + w.dim.y for w in self.widgets if w.visible()) - (self.pos.y + self.dim.y)
 						if (diff > 0):
@@ -1284,6 +1292,7 @@ class ScrollLayout(RectWidgetRigidUnitedVLayout):
 								w.move(ivec2(0, -min(self.styleSheet.scrollVel, diff)))
 								w.subWidgetHandleMouseDisplacement(ivec2.fromTuple(pygame.mouse.get_pos()))
 							self.diff = True
+						return True
 
 	@dataclass(slots=True)
 	class StyleSheet(RectWidgetUnitedVLayout.StyleSheet):

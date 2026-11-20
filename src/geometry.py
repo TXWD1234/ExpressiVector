@@ -186,6 +186,9 @@ class ivec2:
 	def __mul__(self, in_val: int) -> ivec2:
 		return ivec2(self.x * in_val, self.y * in_val)
 
+	def __ifloordiv__(self, other: int) -> ivec2:
+		return ivec2(self.x // other, self.y // other)
+
 	def valid(self, edge: int) -> bool:
 		return 0 <= self.x < edge and 0 <= self.y < edge
 

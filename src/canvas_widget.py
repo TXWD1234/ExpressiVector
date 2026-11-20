@@ -108,7 +108,8 @@ class CanvasWidget(RectWidgetBase):
 				match (self.uniform.engineState[-1]):
 					case EngineState.Normal:
 						#print("normal")
-						pass
+						self.diff = self.diff or self.handler.handleMouseMotionNormal(
+							self.findVPPosFromHanlder_impl(event.pos))
 					case EngineState.Drag:
 						#print("drag")
 						diff: vec2 = vec2.fromTuple(event.rel) / self.cameraState.scale
@@ -116,7 +117,8 @@ class CanvasWidget(RectWidgetBase):
 						self.diff = True
 					case EngineState.Edit:
 						#print("edit")
-						self.handler.handleMouseMotion(self.findVPPosFromHanlder_impl(event.pos))
+						self.handler.handleMouseMotion(
+							self.findVPPosFromHanlder_impl(event.pos))
 						self.diff = True
 								
 	def update(self):
@@ -128,3 +130,4 @@ class CanvasWidget(RectWidgetBase):
 		self.cameraState.pos = vec2(0.0, 0.0)
 		self.cameraState.scale = 1.0
 		self.uniform.engine.clear()
+		self.diff = True

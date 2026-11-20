@@ -5,6 +5,7 @@ from .rgb import *
 from .infrastructure import *
 import pygame
 from dataclasses import dataclass, field, replace
+from collections import OrderedDict
 from typing import Callable, BinaryIO
 import struct
 import array
@@ -78,6 +79,13 @@ class Engine:
 	viewProvider can be assigned to provide preview for the canvas.
 	'''
 
+	previewPoint: vec2 | None = None
+	'''
+	After *Create was called, previewPoint must be set immediately in next
+	mouse motion event.
+	'''
+	
+
 	def view(self) -> pygame.Surface:
 		if (self.viewProvider is not None): return self.viewProvider()
 		return self.canvasCache.canvas
@@ -114,6 +122,7 @@ class Engine:
 		self.bufferList.clear()
 		self.bufferList.append(self.strokeData)
 		self.bufferList.append(self.rectData)
+		self.bufferList.append(self.stampData)
 
 	@dataclass(slots=True)
 	class ObjectIndex:
@@ -280,7 +289,7 @@ class Engine:
 		def getColor(self): return self.color if self.colorOverride is None else self.colorOverride
 
 		def serialize(self, buf: list[float]):
-			Engine.serializeColor_impl(buf, self.color)
+			Engine.serializeColor_impl(buf, self.getColor())
 			Engine.serializeFloat_impl(buf, self.hollowWidth if self.hollow else 0.0)
 		@staticmethod
 		def load(bufIndex: Ptr[int], buf: array.array):
@@ -345,17 +354,12 @@ class Engine:
 		self.rectData[-1].dim = dim
 		self.rectDrawSingle_impl(self.canvasCache.canvas, self.canvasCache.scale, self.rectData[-1])
 		self.viewProvider = None
-		self.rectPreviewPb = None
+		self.previewPoint = None
 
-	'''
-	After rectCreate was called, rectPreviewPb must be set immediately in next
-	mouse motion event.1
-	'''
-	rectPreviewPb: vec2 | None = None
 	def rectPreview(self) -> pygame.Surface:
-		if (self.rectPreviewPb is None): return self.canvasCache.canvas
+		if (self.previewPoint is None): return self.canvasCache.canvas
 		preview = self.canvasCache.canvas.copy()
-		pos, dim = self.rectFindRect_impl(self.rectData[-1].pos, self.rectPreviewPb)
+		pos, dim = self.rectFindRect_impl(self.rectData[-1].pos, self.previewPoint)
 		Engine.rectDrawSingle_impl(preview, self.canvasCache.scale,
 		                           self.RectObject(pos, dim, self.rectData[-1].conf))
 		return preview
@@ -367,6 +371,79 @@ class Engine:
 						 Engine.scalePos_impl(object.pos, scale) +
 						 Engine.scalePos_impl(object.dim, scale),
 		                 width=Engine.scaleDist_impl(object.conf.hollowWidth, scale) if object.conf.hollow else 0)
+
+	# ---------------- Bitmap Stamp ----------------
+
+	@dataclass(slots=True)
+	class StampConfig:
+		textureId: int = -1
+		scale: float = 1.0
+
+	@dataclass(slots=True)
+	class StampObject:
+		pos: vec2 = field(default_factory=lambda: vec2(0.0, 0.0))
+		conf: Engine.StampConfig | None = None
+		engine: Engine | None = None
+
+		def render(self, canvas: pygame.Surface, scale: float):
+			self.engine.stampDrawSingle_impl(canvas, scale, self)
+
+	stampData: list[StampObject] = field(default_factory=list)
+	stampTextureData: list[pygame.Surface] = field(default_factory=list)
+	stampTextureCache: OrderedDict[tuple[int, int, int], pygame.Surface] = field(default_factory=OrderedDict)
+
+	# @param scale combined
+	# lazy loading cache
+	# key: (textureId, w, h)
+	def stampAcquireTexture(self, textureId: int, scale: float) -> pygame.Surface:
+		key = self.stampTextureCacheFindKey_impl(textureId, scale)
+
+		if (key in self.stampTextureCache): # in cache
+			self.stampTextureCache.move_to_end(key)
+			return self.stampTextureCache[key]
+
+		texture = pygame.transform.smoothscale(
+			self.stampTextureData[key[0]], (key[1], key[2]))
+		self.stampTextureCache[key] = texture
+		# cache size cap
+		if (len(self.stampTextureCache) > 64):
+			self.stampTextureCache.popitem(last=False)
+		return texture
+	# @param scale combined scale
+	def stampTextureCacheFindKey_impl(self, textureId: int, scale: float):
+		src = self.stampTextureData[textureId]
+		w = max(1, int(src.get_width () * scale))
+		h = max(1, int(src.get_height() * scale))
+		return (textureId, w, h)
+	# @param scale global scale
+	def stampTextureCacheFindKey(self, obj: StampObject, scale: float):
+		return self.stampTextureCacheFindKey_impl(obj.conf.textureId, obj.conf.scale * scale)
+
+	# public interface
+	def stampCreate(self, pos: vec2, config: StampConfig):
+		self.objectSequence.append(Engine.ObjectIndex(2, len(self.stampData)))
+		self.stampData.append(Engine.StampObject(pos=pos, conf=replace(config), engine=self))
+		self.stampDrawSingle_impl(self.canvasCache.canvas, self.canvasCache.scale, self.stampData[-1])
+
+	stampPreviewConfig: StampConfig | None = None
+	def stampSetPreview(self, config: StampConfig):
+		self.stampPreviewConfig = config
+		self.viewProvider = self.stampPreview
+	def stampStopPreview(self):
+		self.viewProvider = None
+
+
+	def stampPreview(self) -> pygame.Surface:
+		if (self.previewPoint is None): return self.canvasCache.canvas
+		preview = self.canvasCache.canvas.copy()
+		self.stampDrawSingle_impl(preview, self.canvasCache.scale,
+		                          Engine.StampObject(self.previewPoint, self.stampPreviewConfig))
+		return preview
+
+	def stampDrawSingle_impl(self, canvas: pygame.Surface, scale: float, obj: StampObject):
+		texture = self.stampAcquireTexture(obj.conf.textureId, obj.conf.scale * scale)
+		pos = Engine.scalePos_impl(obj.pos, scale)
+		canvas.blit(texture, (pos[0] - texture.get_width() // 2, pos[1] - texture.get_height() // 2))
 
 	# ================ Master Rendering ================
 

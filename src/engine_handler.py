@@ -20,6 +20,7 @@ class EditStateTag(Enum):
 	ColorPick = auto()
 	FileExplore = auto()
 	FileOp = auto()
+	Stamp = auto()
 
 # ################ Globals ################
 
@@ -40,7 +41,8 @@ class Global:
 	editStateTag: list[EditStateTag] = field(default_factory=lambda: [EditStateTag.Nothing])
 	editState: dict = field(default_factory=lambda: {
 		EditStateTag.Stroke: Engine.StrokeConfig(),
-		EditStateTag.Rect: Engine.RectConfig()
+		EditStateTag.Rect: Engine.RectConfig(),
+		EditStateTag.Stamp: Engine.StampConfig()
 		})
 	app: ApplicationWidget | None = None # ApplicationWidget
 	redraw: bool = False # redraw the entire UI
@@ -80,19 +82,38 @@ class EngineHandler:
 					self.uniform.engine.rectFinish(vpPos)
 					self.inProgress = False
 					self.endSession_impl()
+			case EditStateTag.Stamp:
+				if (self.uniform.editState[EditStateTag.Stamp].textureId == -1): return
+				self.uniform.engine.stampCreate(
+					vpPos, self.uniform.editState[EditStateTag.Stamp])
 
 	def handleMouseUp(self, vpPos: vec2):
-		
 		match (self.uniform.editStateTag[-1]):
 			case EditStateTag.Stroke:
 				self.endSession_impl()
-			case EditStateTag.Rect:
-				pass
-
+			case EditStateTag.Rect: pass
+			case EditStateTag.Stamp:
+				self.endSession_impl()
 
 	def handleMouseMotion(self, vpPos: vec2):
 		match (self.uniform.editStateTag[-1]):
 			case EditStateTag.Stroke:
 				self.uniform.engine.strokeAppend(vpPos)
 			case EditStateTag.Rect:
-				self.uniform.engine.rectPreviewPb = vpPos
+				self.uniform.engine.previewPoint = vpPos
+			case EditStateTag.Stamp:
+				if (self.uniform.editState[EditStateTag.Stamp].textureId == -1): return
+				self.uniform.engine.previewPoint = vpPos
+				self.uniform.engine.stampCreate(
+					vpPos, self.uniform.editState[EditStateTag.Stamp])
+
+	# @return diff
+	def handleMouseMotionNormal(self, vpPos: vec2) -> bool:
+		match (self.uniform.editStateTag[-1]):
+			case EditStateTag.Stroke: pass
+			case EditStateTag.Rect: pass
+			case EditStateTag.Stamp:
+				if (self.uniform.editState[EditStateTag.Stamp].textureId == -1): return
+				self.uniform.engine.previewPoint = vpPos
+				return True
+		return False

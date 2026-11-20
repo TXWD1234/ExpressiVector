@@ -20,13 +20,15 @@ deliberate presence hardcoding custom logic.
 def setEditStateCb_impl(w: IconedPushButtonWidget, state: EditStateTag):
 	#print(w.uniform.editStateTag)
 	if (w.uniform.editStateTag[-1] == EditStateTag.Nothing):
+		prevState = EditStateTag.Nothing
 		w.uniform.editStateTag.append(state)
 	else:
+		prevState = w.uniform.editStateTag[-1]
 		if (w.uniform.editStateTag[-1] == state):
 			w.uniform.editStateTag.pop()
 		else:
 			w.uniform.editStateTag[-1] = state
-	w.uniform.app.editStateUpdate()
+	w.uniform.app.editStateUpdate(prevState)
 
 @dataclass(slots=True)
 class SidebarButtonWidget(RectWidgetBase):
@@ -111,6 +113,7 @@ class SidebarWidget(ScrollLayout):
 		self.addTool_impl("assets/file-op-icon.png", EditStateTag.FileOp)
 		self.addTool_impl("assets/stroke-tool-icon.png", EditStateTag.Stroke)
 		self.addTool_impl("assets/rect-tool-icon.png", EditStateTag.Rect)
+		self.addTool_impl("assets/stamp-tool-icon.png", EditStateTag.Stamp)
 
 	def activateLayout(self):
 		if (self.dim.y == 0): return
@@ -466,10 +469,10 @@ class ColorPickerSV(RectWidgetBase):
 		# draw texture
 		screen.blit(self.texture, (self.pos + ivec2(self.styleSheet.margin)).toTuple())
 
-		old = screen.get_clip()
-		screen.set_clip(makeMarginedRect(self.pos, self.dim, self.styleSheet.margin))
+		prevClip = screen.get_clip()
+		screen.set_clip(prevClip.clip(makeMarginedRect(self.pos, self.dim, self.styleSheet.margin)))
 		self.dragger.draw(screen)
-		screen.set_clip(old)
+		screen.set_clip(prevClip)
 
 	def activateLayout(self):
 		if (self.dragger is not None or self.dim.y == 0): return
@@ -859,6 +862,158 @@ class FileExplorerWidgetContent(RectWidgetVLayout):
 		self.historyIndex = 0
 		self.history = [Path.home()]
 
+# ################ Stamp Library ################
+
+@dataclass(slots=True)
+class StampLibraryEntry(RectWidgetBase):
+	selected: bool = False
+
+	onSelectEntry: Callable[[], None] | Callable[[Self], None] = lambda: None
+	onUnselectEntry: Callable[[], None] | Callable[[Self], None] = lambda: None
+
+	textureId: int | None = None
+
+	# ================ Public Interface ================
+
+	def unselect(self):
+		self.selected = False
+		self.state.colorOverride = None
+		self.diff = True
+
+	# ================ Contract Interface ================
+
+	def handleEvent(self, event: pygame.Event):
+		if (super().handleEvent(event)): return True
+		match (event.type):
+			case pygame.MOUSEBUTTONDOWN:
+				if (event.button != 1): return False
+				
+				if (not self.selected):
+					optionalCall(self.onSelectEntry, self)
+					self.state.colorOverride = self.styleSheet.pressColor
+					self.selected = True
+				else:
+					optionalCall(self.onUnselectEntry, self)
+					self.state.colorOverride = None
+					self.selected = False
+				self.diff = True
+			case _:	return False
+		return True
+
+	def __post_init__(self):
+		self.setOverlay(IconOverlay)
+		self.overlay.styleSheet.margin = 10
+
+	def activateLayout(self):
+		if (self.dim.y == 0): return
+		print(self.textureId)
+		self.overlay.texture = pygame.transform.smoothscale(
+			self.uniform.engine.stampTextureData[self.textureId],
+			scaleToFit(
+				ivec2.fromTuple(self.uniform.engine.stampTextureData[self.textureId].get_size()),
+				self.dim - ivec2(2 * self.overlay.styleSheet.margin)).toTuple())
+		super().activateLayout()
+
+	# ================ Style ================
+
+	@dataclass(slots=True)
+	class StyleSheet(PushButtonWidget.StyleSheet):
+		pressColor: Color = DefaultColor
+		selectedColor: Color = DefaultColor
+	styleSheet: StyleSheet = field(default_factory=StyleSheet)
+
+@dataclass(slots=True)
+class StampLibraryLineEntry(RectWidgetHLayout):
+	a: StampLibraryEntry | None = field(init=False, default=None)
+	b: StampLibraryEntry | None = field(init=False, default=None)
+
+	# ================ Contract Interface ================
+
+	def reportHeight(self): return 3
+
+	# ================ Public Interface ================
+	
+	def setTextures(self, textureIda: int, textureIdb: int):
+		print(textureIda, textureIdb)
+		self.a = self.addWidget(LinearLayoutAttribute(proportion=0.5, absolute=True), StampLibraryEntry, textureId=textureIda)
+		if (len(self.uniform.engine.stampTextureData) == textureIdb): return
+		self.b = self.addWidget(LinearLayoutAttribute(), StampLibraryEntry, textureId=textureIdb)
+	
+	def setCallbacks(self, se, ue):
+		self.a.onSelectEntry = se
+		self.a.onUnselectEntry = ue
+		if (self.b is not None):
+			self.b.onSelectEntry = se
+			self.b.onUnselectEntry = ue
+
+@dataclass(slots=True)
+class StampLibraryExplorer(ScrollLayout):
+
+	selectedEntry: StampLibraryEntry | None = None
+
+	onSelectEntry: Callable[[StampLibraryEntry], None] = lambda w: None
+	onUnselectEntry: Callable[[StampLibraryEntry], None] = lambda w: None
+
+	def handleSelectEntry_impl(self, w: StampLibraryEntry):
+		if (self.selectedEntry is not None):
+			self.selectedEntry.unselect()
+		self.selectedEntry = w
+		self.onSelectEntry(w)
+
+	def handleUnselectEntry_impl(self, w: StampLibraryEntry):
+		self.selectedEntry = None
+		self.onUnselectEntry(w)
+
+	# ================ Contract Interface ================
+
+	def reportHeight(self): return 8
+	def draw(self, screen):
+		draw.rect(screen,
+				  self.state.colorOverride if self.state.colorOverride is not None else
+				  (self.styleSheet.hoverColor if self.state.hover else self.styleSheet.backgroundColor),
+				  makeRect(self.pos + ivec2(self.styleSheet.margin, self.styleSheet.margin),
+										self.dim - ivec2(self.styleSheet.margin * 2, self.styleSheet.margin * 2)),
+				  border_radius=self.styleSheet.roundCornerRadius)
+		super().draw(screen)
+
+	# ================ Public Interface ================
+	
+	def clear(self):
+		self.widgets.clear()
+		self.solver.widgetAttribs.clear()
+		self.selectedEntry = None
+
+	def present(self):
+		self.clear()
+
+		for i in range(0, len(self.uniform.engine.stampTextureData), 2):
+			entry = self.addWidget(UnitedLinearLayoutAttribute(), StampLibraryLineEntry)
+			entry.setTextures(i, i + 1)
+			entry.setCallbacks(self.handleSelectEntry_impl, self.handleUnselectEntry_impl)
+	
+@dataclass(slots=True)
+class StampLibraryWidgetContent(RectWidgetVLayout):
+	# widgets
+	addButton: LabeledPushButtonWidget | None = field(init=False, default=None)
+	explorer:  StampLibraryExplorer | None = field(init=False, default=None)
+
+	def handleSelectEntry_impl(self, w: StampLibraryEntry):
+		self.uniform.editState[EditStateTag.Stamp].textureId = w.textureId
+
+	def handleUnselectEntry_impl(self, w: StampLibraryEntry):
+		self.uniform.editState[EditStateTag.Stamp].textureId = -1
+
+	# ================ Contract Interface ================
+
+	def __post_init__(self):
+		self.explorer = self.addWidget(
+			LinearLayoutAttribute(), StampLibraryExplorer,
+			onSelectEntry=self.handleSelectEntry_impl,
+			onUnselectEntry=self.handleUnselectEntry_impl)
+
+	def reportHeight(self):
+		return self.explorer.reportHeight()
+
 
 
 
@@ -947,6 +1102,8 @@ def configSectionStrokeGeomtry(section: ConfigSection):
 class ApplicationWidget(RectWidgetHLayout):
 	# tools
 	configSections: dict[EditStateTag, ConfigSection] = field(default_factory=dict)
+	toolActivationCallback: dict[EditStateTag, Callable[[], None]] = field(default_factory=dict)
+	toolDeactivationCallback: dict[EditStateTag, Callable[[], None]] = field(default_factory=dict)
 
 	# panels
 	mainPanel:         ConfigPanel   | None = field(init=False, default=None)
@@ -1073,6 +1230,53 @@ class ApplicationWidget(RectWidgetHLayout):
 		self.initAddColorField_impl(section, EditStateTag.Rect)
 		self.initEraseToggle_impl(section, EditStateTag.Rect)
 
+	def initStamp_impl(self):
+		section = self.addSection_impl(self.mainPanel, "Stamp", EditStateTag.Stamp)
+		
+		def activate():
+			self.uniform.engine.stampSetPreview(
+				self.uniform.editState[EditStateTag.Stamp])
+		def deactivate():
+			self.uniform.engine.stampStopPreview()
+						
+		def scaleChange(w: IntegerFieldWidget):
+			self.uniform.editState[EditStateTag.Stamp].scale = w.value / 100
+			activate()
+		scaleField: IntegerFieldWidget = sectionAdd(
+			section, text="Scale",
+			proportion=(1, 2),
+			entryWidgetType=IntegerFieldWidget,
+			entryWidgetArgs={"scope": (1, 300),
+							 "onValueChange": scaleChange})
+
+		self.toolActivationCallback[EditStateTag.Stamp] = activate
+		self.toolDeactivationCallback[EditStateTag.Stamp] = deactivate
+
+		# Default Stamps
+
+		for i in Path("assets/stamp-builtin").iterdir():
+			self.uniform.engine.stampTextureData.append(
+				pygame.transform.smoothscale(
+					(texture := pygame.image.load(str(i)).convert_alpha()),
+					scaleToFit(ivec2.fromTuple(texture.get_size()), ivec2(320, 320)).toTuple()))
+
+		# Stamp Library
+
+		librarySection = section.content.addWidget(
+			UnitedLinearLayoutAttribute(), ConfigSection,
+			name="Library")
+		libraryContent = librarySection.addWidget(
+			StampLibraryWidgetContent)
+		librarySection.content = libraryContent
+
+		libraryContent.explorer.present()
+
+		def default():
+			scaleField.setValue(
+				int(self.uniform.editState[EditStateTag.Stamp].scale * 100))
+		self.stampDefaultInit = default
+		
+
 	def initFileOp_impl(self):
 		section = self.addSection_impl(self.mainPanel, "File", EditStateTag.FileOp)
 
@@ -1164,13 +1368,17 @@ class ApplicationWidget(RectWidgetHLayout):
 		self.initFileOp_impl()
 		self.initStroke_impl()
 		self.initRect_impl()
+		self.initStamp_impl()
 
 
 	isOrdinaryPanelState: bool = True
 
 	# Contrainted Contract Interface
 	# Will be called everytime with updated uniform state
-	def editStateUpdate(self):
+	def editStateUpdate(self, prevState: EditStateTag = EditStateTag.Nothing):
+		if (prevState in self.toolDeactivationCallback):
+			self.toolDeactivationCallback[prevState]()
+
 		if (self.uniform.editStateTag[-1] == EditStateTag.Nothing):
 			self.configWidget.hide()
 		else:
@@ -1182,9 +1390,10 @@ class ApplicationWidget(RectWidgetHLayout):
 			self.configWidget.activateLayout()
 			if (self.isOrdinaryPanelState):
 				self.configWidget.scrollToWidget(self.configSections[self.uniform.editStateTag[-1]])
+				if (self.uniform.editStateTag[-1] in self.toolActivationCallback):
+					self.toolActivationCallback[self.uniform.editStateTag[-1]]()
 
 			self.setDefault_impl()
-				
 
 	# ================ Defaults ================
 
@@ -1195,13 +1404,15 @@ class ApplicationWidget(RectWidgetHLayout):
 			self.defaultInited = True
 			self.strokeDefaultInit()
 			self.rectDefaultInit()
+			self.stampDefaultInit()
 			
 		else:
 			match (self.uniform.editStateTag[-1]):
 				case EditStateTag.ColorPick: self.setColorPickDefault_impl()
 
 	strokeDefaultInit: Callable[[], None] | None = None
-	rectDefaultInit: Callable[[], None] | None = None
+	rectDefaultInit:   Callable[[], None] | None = None
+	stampDefaultInit:  Callable[[], None] | None = None
 
 	def setColorPickDefault_impl(self):
 		self.colorPickProvideSetter(self.colorPickRequestGetter())
@@ -1361,6 +1572,13 @@ theme: WidgetTheme = {
 	FileExplorerExplorer: FileExplorerExplorer.StyleSheet(
 		backgroundColor=(0x45, 0x46, 0x46), hoverColor=(0x45, 0x46, 0x46)),
 	FileExplorerWidgetContent: FileExplorerWidgetContent.StyleSheet(),
+
+	StampLibraryEntry: StampLibraryEntry.StyleSheet(
+		backgroundColor=(0x45, 0x46, 0x46), hoverColor=(0x65, 0x66, 0x66), pressColor=(0x85, 0x86, 0x86)),
+	StampLibraryLineEntry: StampLibraryLineEntry.StyleSheet(),
+	StampLibraryExplorer: StampLibraryExplorer.StyleSheet(
+		backgroundColor=(0x45, 0x46, 0x46), hoverColor=(0x45, 0x46, 0x46)),
+	StampLibraryWidgetContent: StampLibraryWidgetContent.StyleSheet(),
 
 	ApplicationWidget: ApplicationWidget.StyleSheet()
 }
