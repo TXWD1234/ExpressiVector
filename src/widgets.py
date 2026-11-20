@@ -998,6 +998,19 @@ class ApplicationWidget(RectWidgetHLayout):
 		colorField.styleSheet.borderColor=(0xde, 0xde, 0xdf)
 		colorField.styleSheet.hoverBorderColor=(0xff, 0xff, 0xff)
 
+	def initEraseToggle_impl(self, section: ConfigSection, tag: EditStateTag):
+		def handleToggle(w: ToggleWidget):
+			if (w.on):
+				self.uniform.editState[tag].colorOverride = White
+			else: self.uniform.editState[tag].colorOverride = None
+
+		toggle: ToggleWidget = sectionAdd(
+			section, text="Erase",
+			proportion=(1, 2),
+			entryWidgetType=ToggleWidget,
+			entryWidgetArgs={"onToggle": handleToggle}
+		)
+
 	# ================ Initialization ================
 
 	def initStroke_impl(self):
@@ -1015,11 +1028,11 @@ class ApplicationWidget(RectWidgetHLayout):
 			self.uniform.editState[EditStateTag.Stroke].width)
 
 		self.initAddColorField_impl(section, EditStateTag.Stroke)
+		self.initEraseToggle_impl(section, EditStateTag.Stroke)
 
 	rectDefaultInited: bool = False
 	def initRect_impl(self):
 		section = self.addSection_impl(self.mainPanel, "Rectangle", EditStateTag.Rect)
-
 
 		hollowToggle: ToggleWidget = sectionAdd(
 			section, text="Hollow",
@@ -1058,6 +1071,7 @@ class ApplicationWidget(RectWidgetHLayout):
 		self.rectDefaultInit = lambda: None
 
 		self.initAddColorField_impl(section, EditStateTag.Rect)
+		self.initEraseToggle_impl(section, EditStateTag.Rect)
 
 	def initFileOp_impl(self):
 		section = self.addSection_impl(self.mainPanel, "File", EditStateTag.FileOp)

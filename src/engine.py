@@ -41,7 +41,6 @@ class Engine:
 		#dim: vec2 = field(default_factory=lambda: vec2(322, 322))
 	canvasState: CanvasState = field(default_factory=CanvasState)
 
-
 	# ================ Canvas Cache ================
 	'''
 	Caching the visual display of the current data.
@@ -178,7 +177,10 @@ class Engine:
 	@dataclass(slots=True)
 	class StrokeConfig:
 		color: Color = Black
+		colorOverride: Color | None = None
 		width: float = 16
+
+		def getColor(self): return self.color if self.colorOverride is None else self.colorOverride
 
 	@dataclass(slots=True)
 	class StrokeObject:
@@ -226,9 +228,10 @@ class Engine:
 
 	# public interface
 	def strokeCreate(self, initPos: vec2, config: StrokeConfig):
+		color = config.getColor()
 		self.objectSequence.append(self.ObjectIndex(0, len(self.strokeData)))
-		self.strokeData.append(self.StrokeObject(vertices=[initPos], color=config.color, width=config.width))
-		pygame.draw.circle(self.canvasCache.canvas, config.color,
+		self.strokeData.append(self.StrokeObject(vertices=[initPos], color=color, width=config.width))
+		pygame.draw.circle(self.canvasCache.canvas, color,
 			Engine.scalePos_impl(initPos, self.canvasCache.scale), (config.width / 2 * self.canvasCache.scale))
 
 	def strokeAppend(self, pos: vec2):
@@ -270,8 +273,11 @@ class Engine:
 	@dataclass(slots=True)
 	class RectConfig:
 		color: Color = Black
+		colorOverride: Color | None = None
 		hollow: bool = False
 		hollowWidth: float = 0.0
+
+		def getColor(self): return self.color if self.colorOverride is None else self.colorOverride
 
 		def serialize(self, buf: list[float]):
 			Engine.serializeColor_impl(buf, self.color)
@@ -357,7 +363,7 @@ class Engine:
 	# rendering
 	@staticmethod
 	def rectDrawSingle_impl(canvas: pygame.Surface, scale: float, object: RectObject):
-		pygame.draw.rect(canvas, object.conf.color,
+		pygame.draw.rect(canvas, object.conf.getColor(),
 						 Engine.scalePos_impl(object.pos, scale) +
 						 Engine.scalePos_impl(object.dim, scale),
 		                 width=Engine.scaleDist_impl(object.conf.hollowWidth, scale) if object.conf.hollow else 0)
