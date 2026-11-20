@@ -995,15 +995,37 @@ class StampLibraryWidgetContent(RectWidgetVLayout):
 	addButton: LabeledPushButtonWidget | None = field(init=False, default=None)
 	explorer:  StampLibraryExplorer | None = field(init=False, default=None)
 
+	requestFileExploreCb: Callable[[Callable[[Path], None]], None] | None = None
+
 	def handleSelectEntry_impl(self, w: StampLibraryEntry):
 		self.uniform.editState[EditStateTag.Stamp].textureId = w.textureId
 
 	def handleUnselectEntry_impl(self, w: StampLibraryEntry):
 		self.uniform.editState[EditStateTag.Stamp].textureId = -1
 
+
+	def handleFileExplore_impl(self, path: Path):
+		if (path.is_dir() or path.suffix.lower() not in (".png", ".jpg", ".bmp")): return
+		self.uniform.engine.stampTextureData.append(
+			pygame.transform.smoothscale(
+				(texture := pygame.image.load(str(path)).convert_alpha()),
+				scaleToFit(ivec2.fromTuple(texture.get_size()), ivec2(320, 320)).toTuple()))
+		self.explorer.present()
+		self.activateLayout()
+		self.activateLayout()
+
 	# ================ Contract Interface ================
 
 	def __post_init__(self):
+		self.addButton = self.addWidget(
+			LinearLayoutAttribute(proportion=0.16, absolute=True),
+			LabeledPushButtonWidget, text="Add",
+			onPress=lambda: self.requestFileExploreCb(self.handleFileExplore_impl))
+		self.addButton.overlay.styleSheet.fontSize = int(self.uniform.fontSize * 0.7)
+		self.addButton.styleSheet = LabeledPushButtonWidget.StyleSheet(
+			backgroundColor=(0x53, 0x54, 0x55), hoverColor=(0x6e, 0x6e, 0x6f), pressColor=(0x8e, 0x8e, 0x8f),
+			borderWidth=2, borderColor=(0x6e, 0x6e, 0x6f), hoverBorderColor=(0xbe, 0xbe, 0xbf),
+			roundCornerRadius=8, margin=4, textMargin=2)
 		self.explorer = self.addWidget(
 			LinearLayoutAttribute(), StampLibraryExplorer,
 			onSelectEntry=self.handleSelectEntry_impl,
@@ -1274,7 +1296,8 @@ class ApplicationWidget(RectWidgetHLayout):
 			UnitedLinearLayoutAttribute(), ConfigSection,
 			name="Library")
 		libraryContent = librarySection.addWidget(
-			StampLibraryWidgetContent)
+			StampLibraryWidgetContent,
+			requestFileExploreCb=self.requestFileExplore_impl)
 		librarySection.content = libraryContent
 
 		libraryContent.explorer.present()
