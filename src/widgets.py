@@ -906,7 +906,6 @@ class StampLibraryEntry(RectWidgetBase):
 
 	def activateLayout(self):
 		if (self.dim.y == 0): return
-		print(self.textureId)
 		self.overlay.texture = pygame.transform.smoothscale(
 			self.uniform.engine.stampTextureData[self.textureId],
 			scaleToFit(
@@ -934,7 +933,6 @@ class StampLibraryLineEntry(RectWidgetHLayout):
 	# ================ Public Interface ================
 	
 	def setTextures(self, textureIda: int, textureIdb: int):
-		print(textureIda, textureIdb)
 		self.a = self.addWidget(LinearLayoutAttribute(proportion=0.5, absolute=True), StampLibraryEntry, textureId=textureIda)
 		if (len(self.uniform.engine.stampTextureData) == textureIdb): return
 		self.b = self.addWidget(LinearLayoutAttribute(), StampLibraryEntry, textureId=textureIdb)

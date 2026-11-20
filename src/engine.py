@@ -6,9 +6,10 @@ from .infrastructure import *
 import pygame
 from dataclasses import dataclass, field, replace
 from collections import OrderedDict
-from typing import Callable, BinaryIO
+from typing import Callable, BinaryIO, Self
 import struct
 import array
+import io
 
 # ================================================================
 # **************** Expressive Vector Image Engine ****************
@@ -379,6 +380,16 @@ class Engine:
 		textureId: int = -1
 		scale: float = 1.0
 
+		def serialize(self, ibuf: list[int], fbuf: list[float]):
+			ibuf.append(self.textureId)
+			fbuf.append(self.scale)
+		@staticmethod
+		def load(ibufIndex: Ptr[int], ibuf: array.array,
+		         fbufIndex: Ptr[int], fbuf: array.array):
+			return Engine.StampConfig(
+				Engine.loadInt_impl(ibufIndex, ibuf),
+				Engine.loadFloat_impl(fbufIndex, fbuf))
+
 	@dataclass(slots=True)
 	class StampObject:
 		pos: vec2 = field(default_factory=lambda: vec2(0.0, 0.0))
@@ -388,8 +399,52 @@ class Engine:
 		def render(self, canvas: pygame.Surface, scale: float):
 			self.engine.stampDrawSingle_impl(canvas, scale, self)
 
+		def serialize(self, ibuf: list[int], fbuf: list[float]):
+			Engine.serializeVec2_impl(fbuf, self.pos)
+			self.conf.serialize(ibuf, fbuf)
+		@staticmethod
+		def load(ibufIndex: Ptr[int], ibuf: array.array,
+		         fbufIndex: Ptr[int], fbuf: array.array):
+			return Engine.StampObject(
+				pos=Engine.loadVec2_impl(fbufIndex, fbuf),
+				conf=Engine.StampConfig.load(ibufIndex, ibuf, fbufIndex, fbuf))
+
 	stampData: list[StampObject] = field(default_factory=list)
 	stampTextureData: list[pygame.Surface] = field(default_factory=list)
+
+	@staticmethod
+	def stampWriteTexture_impl(f: BinaryIO, texture: pygame.Surface):
+		buf = io.BytesIO()
+		pygame.image.save(texture, buf, ".png")
+		data = buf.getvalue()
+		f.write(struct.pack("<I", len(data)))
+		f.write(data)
+	def stampWriteTextureData_impl(self, f: BinaryIO):
+		f.write(struct.pack("<I", len(self.stampTextureData)))
+		for texture in self.stampTextureData:
+			self.stampWriteTexture_impl(f, texture)
+
+	@staticmethod
+	def stampReadTexture_impl(f: BinaryIO) -> pygame.Surface:
+		size, = struct.unpack("<I", f.read(4))
+		return pygame.image.load(io.BytesIO(f.read(size)), ".png").convert_alpha()
+	def stampReadTextureData_impl(self, f: BinaryIO):
+		count, = struct.unpack("<I", f.read(4))
+		self.stampTextureData = [self.stampReadTexture_impl(f) for i in range(count)]
+
+	def stampSerialize(self) -> tuple[list[int], list[float]]:
+		ibuf = []
+		fbuf = []
+		for i in self.stampData: i.serialize(ibuf, fbuf)
+		return (ibuf, fbuf)
+
+	def stampWrite(self, f: BinaryIO):
+		self.stampWriteTextureData_impl(f)
+		#Engine.write
+
+
+
+
 	stampTextureCache: OrderedDict[tuple[int, int, int], pygame.Surface] = field(default_factory=OrderedDict)
 
 	# @param scale combined
@@ -467,84 +522,87 @@ class Engine:
 	The terminology of Binary Serialization is: serialize/load.
 	'''
 
+	@dataclass(slots=True)
+	class OutBinary:
+		fbuf: list[float] = field(default_factory=list)
+		ibuf: list[int] = field(default_factory=list)
+	outBinary: OutBinary | None = None
+
+	@dataclass(slots=True)
+	class InBinary:
+		fbuf: array.array = field(default_factory=lambda: array.array("f"))
+		ibuf: array.array = field(default_factory=lambda: array.array("i"))
+		findex: int = 0
+		iindex: int = 0
+	inBinary: InBinary | None = None
+
 	# ---------------- Serialize ----------------
 
-	@staticmethod
-	def serializeFloat_impl(buf: list[float], v: float):
-		buf.append(v)
+	def serializeFloat_impl(self, v: float):
+		self.outBinary.fbuf.append(v)
+	def serializeInt_impl(self, v: int):
+		self.outBinary.ibuf.append(v)
 
-	@staticmethod
-	def serializeVec2_impl(buf: list[float], v: vec2):
-		buf.append(v.x)
-		buf.append(v.y)
+	def serializeVec2_impl(self, v: vec2):
+		self.serializeFloat_impl(v.x)
+		self.serializeFloat_impl(v.y)
 
-	@staticmethod
-	def serializeColor_impl(buf: list[float], color: Color):
+	def serializeColor_impl(self, color: Color):
 		c = pygame.Color(color)
-		buf.append(float(c.r))
-		buf.append(float(c.g))
-		buf.append(float(c.b))
-		buf.append(float(c.a))
+		self.serializeInt_impl(c.r)
+		self.serializeInt_impl(c.g)
+		self.serializeInt_impl(c.b)
+		self.serializeInt_impl(c.a)
 
 	'''
 	All lists serialization based on fbuffer must have an index header
 	somewhere else.
 	'''
 
-	@staticmethod
-	def serializeFloatList_impl(buf: list[float], ibuf: list[int], flist: list[float]):
-		ibuf.append(len(flist))
-		buf.extend(flist)
+	def serializeFloatList_impl(self, flist: list[float]):
+		self.serializeInt_impl(len(flist))
+		self.outBinary.fbuf.extend(flist)
+	def serializeIntList_impl(self, ilist: list[int]):
+		self.serializeInt_impl(len(ilist))
+		self.outBinary.ibuf.extend(ilist)
 
-	@staticmethod
-	def serializeVec2List_impl(buf: list[float], ibuf: list[int], vlist: list[vec2]):
-		ibuf.append(len(vlist) * 2)
-		buf.extend(f for v in vlist for f in (v.x, v.y))
-
+	def serializeVec2List_impl(self, vlist: list[vec2]):
+		self.serializeInt_impl(len(vlist) * 2)
+		self.outBinary.fbuf.extend(f for v in vlist for f in (v.x, v.y))
+		
 	# ---------------- Load ----------------
 
-	@staticmethod
-	def loadFloat_impl(bufIndex: Ptr[int], buf: array.array) -> float:
-		res = buf[bufIndex.v]
-		bufIndex.v += 1
-		return res
+	def loadFloat_impl(self) -> float:
+		val = self.inBinary.fbuf[self.inBinary.findex]
+		self.inBinary.findex += 1
+		return val
+	def loadInt_impl(self) -> int:
+		val = self.inBinary.ibuf[self.inBinary.iindex]
+		self.inBinary.iindex += 1
+		return val
 
-	@staticmethod
-	def loadVec2_impl(bufIndex: Ptr[int], buf: array.array) -> vec2:
-		res = vec2(buf[bufIndex.v], buf[bufIndex.v + 1])
-		bufIndex.v += 2
-		return res
+	def loadVec2_impl(self) -> vec2:
+		return vec2(self.loadFloat_impl(), self.loadFloat_impl())
 	
-	@staticmethod
-	def loadColor_impl(bufIndex: Ptr[int], buf: array.array) -> Color:
-		res = (int(buf[bufIndex.v]), int(buf[bufIndex.v + 1]),
-		       int(buf[bufIndex.v + 2]), int(buf[bufIndex.v + 3]))
-		bufIndex.v += 4
-		return res
+	def loadColor_impl(self) -> Color:
+		return (
+			self.loadInt_impl(),
+			self.loadInt_impl(),
+			self.loadInt_impl(),
+			self.loadInt_impl())
 
-	@staticmethod
-	def loadFloatList_impl(
-		bufIndex: Ptr[int], ibufIndex: Ptr[int],
-		buf: array.array, ibuf: array.array) -> list[vec2]:
-		size = ibuf[ibufIndex.v]
-		ibufIndex.v += 1
+	def loadFloatList_impl(self) -> list[float]:
+		size = self.loadInt_impl()
+		val =  [self.inBinary.fbuf[self.inBinary.findex + i] for i in range(0, size)]
+		self.inBinary.findex += size
+		return val
 
-		res = [buf[i] for i in range(bufIndex.v, bufIndex.v + size)]
-
-		bufIndex.v += size
-		return res
-
-	@staticmethod
-	def loadVec2List_impl(
-		bufIndex: Ptr[int], ibufIndex: Ptr[int],
-		buf: array.array, ibuf: array.array) -> list[vec2]:
-		size = ibuf[ibufIndex.v]
-		ibufIndex.v += 1
-
-		res = [vec2(buf[i], buf[i + 1]) for i in range(bufIndex.v, bufIndex.v + size, 2)]
-
-		bufIndex.v += size
-		return res
+	def loadVec2List_impl(self) -> list[vec2]:
+		size = self.loadInt_impl()
+		val =  [vec2(self.inBinary.fbuf[self.inBinary.findex + i],
+		             self.inBinary.fbuf[self.inBinary.findex + i + 1]) for i in range(0, size, 2)]
+		self.inBinary.findex += size
+		return val
 
 	# ================ File IO ================
 	'''
@@ -553,70 +611,40 @@ class Engine:
 	handle and forward the data to Binary Serialization.
 	The terminology of Binary Serialization is: write/read.
 	'''
-	
-	# ---------------- Write ----------------
-	'''
-	All sizes are element size, meaning the count of engine objects, distinguish
-	from byte count or primitive count.
-	'''
-
-	@staticmethod
-	def writeFloatBuffer_impl(f: BinaryIO, buf: list[float], size: int):
-		f.write(struct.pack("<2I", size, len(buf)))
-		if (size > 0): array.array("f", buf).tofile(f)
-
-	@staticmethod
-	def writeIntBuffer_impl(f: BinaryIO, buf: list[int], size: int):
-		f.write(struct.pack("<2I", size, len(buf)))
-		if (size > 0): array.array("i", buf).tofile(f)
-
-	@staticmethod
-	def writeFloatBufferList_impl(f: BinaryIO, buf: list, ibuf: list[int], size: int):
-		f.write(struct.pack("<3I", size, len(buf), len(ibuf)))
-		if (size > 0):
-			array.array("f", buf).tofile(f)
-			array.array("i", ibuf).tofile(f)
-
+		
 	def writeDocHeader_impl(self, f: BinaryIO):
 		# format identifier
 		f.write(b"EVDOC")
 		# document dimension
 		f.write(struct.pack("<2f", self.canvasState.dim.x, self.canvasState.dim.y))
 
+	def writeBinary_impl(self, f: BinaryIO):
+		f.write(struct.pack("<2I", len(self.outBinary.fbuf), len(self.outBinary.ibuf)))
+
+		if (len(self.outBinary.fbuf) > 0): array.array("f", self.outBinary.fbuf).tofile(f)
+		if (len(self.outBinary.ibuf) > 0): array.array("i", self.outBinary.ibuf).tofile(f)
+
 	def write_impl(self, f: BinaryIO):
+		# serialize
+		
+
 		self.writeDocHeader_impl(f)
-		self.objectSequenceWrite(f)
-		self.strokeWrite(f)
-		self.rectWrite(f)
+		self.writeBinary_impl(f)
+		self.stampWriteTextureData_impl(f)
 
 	def write(self, path: Path):
+		self.outBinary = Engine.OutBinary()
 		with open(path, "wb") as f:
 			self.write_impl(f)
+		self.outBinary = None
 
 	# ---------------- Read ----------------
 
-	@staticmethod
-	def readFloatBuffer_impl(f: BinaryIO) -> tuple[array.array, int]:
-		elemSize, bufSize = struct.unpack("<2I", f.read(8))
-		buf = array.array("f")
-		buf.fromfile(f, bufSize)
-		return buf, elemSize
-
-	@staticmethod
-	def readIntBuffer_impl(f: BinaryIO) -> tuple[array.array, int]:
-		elemSize, bufSize = struct.unpack("<2I", f.read(8))
-		buf = array.array("i")
-		buf.fromfile(f, bufSize)
-		return buf, elemSize
-
-	@staticmethod
-	def readFloatBufferList_impl(f: BinaryIO) -> tuple[array.array, array.array, int]:
-		elemSize, bufSize, ibufSize = struct.unpack("<3I", f.read(12))
-		buf = array.array("f")
-		ibuf = array.array("i")
-		buf.fromfile(f, bufSize)
-		ibuf.fromfile(f, ibufSize)
-		return buf, ibuf, elemSize
+	def readBinary_impl(self, f: BinaryIO):
+		fsize, isize = struct.unpack("<2I", f.read(8))
+		self.inBinary = Engine.InBinary()
+		self.inBinary.fbuf.fromfile(f, fsize)
+		self.inBinary.ibuf.fromfile(f, isize)
 
 	def readDocHeader_impl(self, f: BinaryIO) -> bool:
 		if (f.read(5) != b"EVDOC"): return False
@@ -625,16 +653,15 @@ class Engine:
 
 	def read_impl(self, f: BinaryIO):
 		if (not self.readDocHeader_impl(f)): return
-		self.objectSequenceRead(f)
-		self.strokeRead(f)
-		self.rectRead(f)
-
-		self.initBufferList()
-		self.redraw(1.0)
+		self.readBinary_impl(f)
+		self.stampReadTextureData_impl(f)
 
 	def read(self, path: Path):
 		with open(path, "rb") as f:
 			self.read_impl(f)
+		self.initBufferList()
+		self.redraw(1.0)
+		self.inBinary = None
 
 	# ---------------- Export ----------------
 
