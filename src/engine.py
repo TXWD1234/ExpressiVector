@@ -93,6 +93,7 @@ class Engine:
 
 	def clear(self):
 		self.objectSequence.clear()
+		self.stampTextureCache.clear()
 		for buffer in self.bufferList:
 			buffer.clear()
 		self.redraw(1.0)
@@ -130,33 +131,21 @@ class Engine:
 		typeIndex: int = 0
 		index: int = 0
 
-		def serialize(self, buf: list[int]):
-			buf.append(self.typeIndex)
-			buf.append(self.index)
-		@staticmethod
-		def load(bufIndex: Ptr[int], buf: array.array):
-			res = Engine.ObjectIndex(buf[bufIndex.v], buf[bufIndex.v + 1])
-			bufIndex.v += 2
-			return res
-
 	objectSequence: list[ObjectIndex] = field(default_factory=list)
 
-	def objectSequenceSerialize(self) -> list[int]:
-		res = []
-		for i in self.objectSequence: i.serialize(res)
-		return res
+	def objectSequenceSerialize(self):
+		self.serializeInt_impl(len(self.objectSequence))
+		for obj in self.objectSequence:
+			self.serializeInt_impl(obj.typeIndex)
+			self.serializeInt_impl(obj.index)
 
-	def objectSequenceWrite(self, f: BinaryIO):
-		Engine.writeIntBuffer_impl(f, self.objectSequenceSerialize(), len(self.objectSequence))
-
-	def objectSequenceLoad(self, buf: array.array, size: int):
-		index = Ptr[int](v=0)
-		self.objectSequence = [Engine.ObjectIndex.load(index, buf) for _ in range(size)]
-
-	def objectSequenceRead(self, f: BinaryIO):
-		buf, size = Engine.readIntBuffer_impl(f)
-		self.objectSequenceLoad(buf, size)
-
+	def objectSequenceLoad(self):
+		size = self.loadInt_impl()
+		self.objectSequence = [self.ObjectIndex(
+			self.loadInt_impl(),
+			self.loadInt_impl()
+		) for _ in range(size)]
+		
 	# ================ Tools ================
 	'''
 	Contract Interface Convention:
@@ -202,39 +191,23 @@ class Engine:
 		def render(self, canvas: pygame.Surface, scale: float):
 			Engine.strokeDrawSingle_impl(canvas, scale, self)
 
-		def serialize(self, buf: list[float], ibuf: list[int]):
-			Engine.serializeVec2List_impl(buf, ibuf, self.vertices)
-			Engine.serializeColor_impl(buf, self.color)
-			Engine.serializeFloat_impl(buf, self.width)
-		@staticmethod
-		def load(bufIndex: Ptr[int], ibufIndex: Ptr[int],
-				 buf: array.array, ibuf: array.array):
-			return Engine.StrokeObject(
-				Engine.loadVec2List_impl(bufIndex, ibufIndex, buf, ibuf),
-				Engine.loadColor_impl(bufIndex, buf),
-				Engine.loadFloat_impl(bufIndex, buf))
-
 	strokeData: list[StrokeObject] = field(default_factory=list)
 
 	# save/open
-	def strokeSerialize(self) -> tuple[list[float], list[int]]:
-		res = []
-		ires = []
-		for i in self.strokeData: i.serialize(res, ires)
-		return (res, ires)
+	def strokeSerialize(self):
+		self.serializeInt_impl(len(self.strokeData))
+		for obj in self.strokeData:
+			self.serializeVec2List_impl(obj.vertices)
+			self.serializeColor_impl(obj.color)
+			self.serializeFloat_impl(obj.width)
 
-	def strokeWrite(self, f: BinaryIO):
-		buf, ibuf = self.strokeSerialize()
-		Engine.writeFloatBufferList_impl(f, buf, ibuf, len(self.strokeData))
-
-	def strokeLoad(self, buf: array.array, ibuf: array.array, size: int):
-		index = Ptr[int](v=0)
-		iindex = Ptr[int](v=0)
-		self.strokeData = [Engine.StrokeObject.load(index, iindex, buf, ibuf) for _ in range(size)]
-
-	def strokeRead(self, f: BinaryIO):
-		buf, ibuf, size = Engine.readFloatBufferList_impl(f)
-		self.strokeLoad(buf, ibuf, size)
+	def strokeLoad(self):
+		size = self.loadInt_impl()
+		self.strokeData = [self.StrokeObject(
+			self.loadVec2List_impl(),
+			self.loadColor_impl(),
+			self.loadFloat_impl()
+		) for _ in range(size)]
 
 	# public interface
 	def strokeCreate(self, initPos: vec2, config: StrokeConfig):
@@ -289,16 +262,6 @@ class Engine:
 
 		def getColor(self): return self.color if self.colorOverride is None else self.colorOverride
 
-		def serialize(self, buf: list[float]):
-			Engine.serializeColor_impl(buf, self.getColor())
-			Engine.serializeFloat_impl(buf, self.hollowWidth if self.hollow else 0.0)
-		@staticmethod
-		def load(bufIndex: Ptr[int], buf: array.array):
-			return Engine.RectConfig(
-				color=Engine.loadColor_impl(bufIndex, buf),
-				hollowWidth=(width := Engine.loadFloat_impl(bufIndex, buf)),
-				hollow=(width != 0.0))
-
 	@dataclass(slots=True)
 	class RectObject:
 		pos: vec2 = field(default_factory=vec2)
@@ -308,35 +271,29 @@ class Engine:
 		def render(self, canvas: pygame.Surface, scale: float):
 			Engine.rectDrawSingle_impl(canvas, scale, self)
 
-		def serialize(self, buf: list[float]):
-			Engine.serializeVec2_impl(buf, self.pos)
-			Engine.serializeVec2_impl(buf, self.dim)
-			self.conf.serialize(buf)
-		@staticmethod
-		def load(bufIndex: Ptr[int], buf: array.array):
-			return Engine.RectObject(
-				Engine.loadVec2_impl(bufIndex, buf),
-				Engine.loadVec2_impl(bufIndex, buf),
-				Engine.RectConfig.load(bufIndex, buf))
-
 	rectData: list[RectObject] = field(default_factory=list)
 
 	# save/open
-	def rectSerialize(self) -> list[float]:
-		res = []
-		for i in self.rectData: i.serialize(res)
-		return res
+	def rectSerialize(self):
+		self.serializeInt_impl(len(self.rectData))
+		for obj in self.rectData:
+			self.serializeVec2_impl(obj.pos)
+			self.serializeVec2_impl(obj.dim)
+			self.serializeColor_impl(obj.conf.getColor())
+			self.serializeFloat_impl(
+				obj.conf.hollowWidth if obj.conf.hollow else 0.0)
 
-	def rectWrite(self, f: BinaryIO):
-		Engine.writeFloatBuffer_impl(f, self.rectSerialize(), len(self.rectData))
+	def rectLoad(self):
+		size = self.loadInt_impl()
+		self.rectData = [Engine.RectObject(
+			self.loadVec2_impl(),
+			self.loadVec2_impl(),
+			self.RectConfig(
+				color=self.loadColor_impl(),
+				hollowWidth=(width := self.loadFloat_impl()),
+				hollow=(width != 0.0))
+		) for _ in range(size)]
 
-	def rectLoad(self, buf: array.array, size: int):
-		index = Ptr[int](v=0)
-		self.rectData = [Engine.RectObject.load(index, buf) for _ in range(size)]
-
-	def rectRead(self, f: BinaryIO):
-		buf, size = Engine.readFloatBuffer_impl(f)
-		self.rectLoad(buf, size)
 
 	@staticmethod
 	def rectFindRect_impl(pa: vec2, pb: vec2):
@@ -375,20 +332,32 @@ class Engine:
 
 	# ---------------- Bitmap Stamp ----------------
 
+	stampTextureData: list[pygame.Surface] = field(default_factory=list)
+
+	@staticmethod
+	def stampWriteTexture_impl(f: BinaryIO, texture: pygame.Surface):
+		buf = io.BytesIO()
+		pygame.image.save(texture, buf, ".png")
+		data = buf.getvalue()
+		f.write(struct.pack("<I", len(data)))
+		f.write(data)
+	def stampWriteTextureData(self, f: BinaryIO):
+		f.write(struct.pack("<I", len(self.stampTextureData)))
+		for texture in self.stampTextureData:
+			self.stampWriteTexture_impl(f, texture)
+
+	@staticmethod
+	def stampReadTexture_impl(f: BinaryIO) -> pygame.Surface:
+		size, = struct.unpack("<I", f.read(4))
+		return pygame.image.load(io.BytesIO(f.read(size)), ".png").convert_alpha()
+	def stampReadTextureData(self, f: BinaryIO):
+		count, = struct.unpack("<I", f.read(4))
+		self.stampTextureData = [self.stampReadTexture_impl(f) for i in range(count)]
+
 	@dataclass(slots=True)
 	class StampConfig:
 		textureId: int = -1
 		scale: float = 1.0
-
-		def serialize(self, ibuf: list[int], fbuf: list[float]):
-			ibuf.append(self.textureId)
-			fbuf.append(self.scale)
-		@staticmethod
-		def load(ibufIndex: Ptr[int], ibuf: array.array,
-		         fbufIndex: Ptr[int], fbuf: array.array):
-			return Engine.StampConfig(
-				Engine.loadInt_impl(ibufIndex, ibuf),
-				Engine.loadFloat_impl(fbufIndex, fbuf))
 
 	@dataclass(slots=True)
 	class StampObject:
@@ -399,51 +368,23 @@ class Engine:
 		def render(self, canvas: pygame.Surface, scale: float):
 			self.engine.stampDrawSingle_impl(canvas, scale, self)
 
-		def serialize(self, ibuf: list[int], fbuf: list[float]):
-			Engine.serializeVec2_impl(fbuf, self.pos)
-			self.conf.serialize(ibuf, fbuf)
-		@staticmethod
-		def load(ibufIndex: Ptr[int], ibuf: array.array,
-		         fbufIndex: Ptr[int], fbuf: array.array):
-			return Engine.StampObject(
-				pos=Engine.loadVec2_impl(fbufIndex, fbuf),
-				conf=Engine.StampConfig.load(ibufIndex, ibuf, fbufIndex, fbuf))
-
 	stampData: list[StampObject] = field(default_factory=list)
-	stampTextureData: list[pygame.Surface] = field(default_factory=list)
 
-	@staticmethod
-	def stampWriteTexture_impl(f: BinaryIO, texture: pygame.Surface):
-		buf = io.BytesIO()
-		pygame.image.save(texture, buf, ".png")
-		data = buf.getvalue()
-		f.write(struct.pack("<I", len(data)))
-		f.write(data)
-	def stampWriteTextureData_impl(self, f: BinaryIO):
-		f.write(struct.pack("<I", len(self.stampTextureData)))
-		for texture in self.stampTextureData:
-			self.stampWriteTexture_impl(f, texture)
+	def stampSerialize(self):
+		self.serializeInt_impl(len(self.stampData))
+		for obj in self.stampData:
+			self.serializeVec2_impl(obj.pos)
+			self.serializeInt_impl(obj.conf.textureId)
+			self.serializeFloat_impl(obj.conf.scale)
 
-	@staticmethod
-	def stampReadTexture_impl(f: BinaryIO) -> pygame.Surface:
-		size, = struct.unpack("<I", f.read(4))
-		return pygame.image.load(io.BytesIO(f.read(size)), ".png").convert_alpha()
-	def stampReadTextureData_impl(self, f: BinaryIO):
-		count, = struct.unpack("<I", f.read(4))
-		self.stampTextureData = [self.stampReadTexture_impl(f) for i in range(count)]
-
-	def stampSerialize(self) -> tuple[list[int], list[float]]:
-		ibuf = []
-		fbuf = []
-		for i in self.stampData: i.serialize(ibuf, fbuf)
-		return (ibuf, fbuf)
-
-	def stampWrite(self, f: BinaryIO):
-		self.stampWriteTextureData_impl(f)
-		#Engine.write
-
-
-
+	def stampLoad(self):
+		size = self.loadInt_impl()
+		self.stampData = [Engine.StampObject(
+			self.loadVec2_impl(),
+			Engine.StampConfig(
+				self.loadInt_impl(),
+				self.loadFloat_impl()),
+			self) for _ in range(size)]
 
 	stampTextureCache: OrderedDict[tuple[int, int, int], pygame.Surface] = field(default_factory=OrderedDict)
 
@@ -611,7 +552,13 @@ class Engine:
 	handle and forward the data to Binary Serialization.
 	The terminology of Binary Serialization is: write/read.
 	'''
-		
+
+	def serialize(self):
+		self.objectSequenceSerialize()
+		self.strokeSerialize()
+		self.rectSerialize()
+		self.stampSerialize()
+	
 	def writeDocHeader_impl(self, f: BinaryIO):
 		# format identifier
 		f.write(b"EVDOC")
@@ -625,20 +572,24 @@ class Engine:
 		if (len(self.outBinary.ibuf) > 0): array.array("i", self.outBinary.ibuf).tofile(f)
 
 	def write_impl(self, f: BinaryIO):
-		# serialize
-		
-
 		self.writeDocHeader_impl(f)
 		self.writeBinary_impl(f)
-		self.stampWriteTextureData_impl(f)
+		self.stampWriteTextureData(f)
 
 	def write(self, path: Path):
 		self.outBinary = Engine.OutBinary()
 		with open(path, "wb") as f:
+			self.serialize()
 			self.write_impl(f)
 		self.outBinary = None
 
 	# ---------------- Read ----------------
+
+	def load(self):
+		self.objectSequenceLoad()
+		self.strokeLoad()
+		self.rectLoad()
+		self.stampLoad()
 
 	def readBinary_impl(self, f: BinaryIO):
 		fsize, isize = struct.unpack("<2I", f.read(8))
@@ -651,14 +602,16 @@ class Engine:
 		self.canvasState.dim = vec2.fromTuple(struct.unpack("<2f", f.read(8)))
 		return True
 
-	def read_impl(self, f: BinaryIO):
-		if (not self.readDocHeader_impl(f)): return
+	def read_impl(self, f: BinaryIO) -> bool:
+		if (not self.readDocHeader_impl(f)): return False
 		self.readBinary_impl(f)
-		self.stampReadTextureData_impl(f)
+		self.stampReadTextureData(f)
+		return True
 
 	def read(self, path: Path):
 		with open(path, "rb") as f:
-			self.read_impl(f)
+			if (self.read_impl(f)): self.load()
+		self.stampTextureCache.clear()
 		self.initBufferList()
 		self.redraw(1.0)
 		self.inBinary = None
