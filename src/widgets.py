@@ -114,6 +114,7 @@ class SidebarWidget(ScrollLayout):
 		self.addTool_impl("assets/stroke-tool-icon.png", EditStateTag.Stroke)
 		self.addTool_impl("assets/line-tool-icon.png", EditStateTag.Line)
 		self.addTool_impl("assets/rect-tool-icon.png", EditStateTag.Rect)
+		self.addTool_impl("assets/oval-tool-icon.png", EditStateTag.Oval)
 		self.addTool_impl("assets/stamp-tool-icon.png", EditStateTag.Stamp)
 
 	def activateLayout(self):
@@ -1286,6 +1287,49 @@ class ApplicationWidget(RectWidgetHLayout):
 		self.initAddColorField_impl(section, EditStateTag.Rect)
 		self.initEraseToggle_impl(section, EditStateTag.Rect)
 
+	ovalDefaultInited: bool = False
+	def initOval_impl(self):
+		section = self.addSection_impl(self.mainPanel, "Oval", EditStateTag.Oval)
+
+		hollowToggle: ToggleWidget = sectionAdd(
+			section, text="Hollow",
+			proportion=(1, 2),
+			entryWidgetType=ToggleWidget,
+			entryWidgetArgs={})
+
+		def handleWidthValueChange(w: IntegerFieldWidget):
+			self.uniform.editState[EditStateTag.Oval].hollowWidth = w.value
+
+		hollowWidthEntry = section.content.addWidget(
+			UnitedLinearLayoutAttribute(visible=False), ConfigHEntryBase,
+			text="     Width", proportion=(1, 2),
+			entryWidgetType=IntegerFieldWidget,
+		 	entryWidgetArgs={"scope": (1, 100),
+		 					 "onValueChange": handleWidthValueChange})
+		hollowWidthEntry.labelWidget.overlay.styleSheet.fontSize = int(
+			hollowWidthEntry.labelWidget.overlay.styleSheet.fontSize * 0.8)
+
+		def handleToggle(w: ToggleWidget):
+			self.uniform.editState[EditStateTag.Oval].hollow = w.on
+			# show/hide linked widget
+			if (w.on): hollowWidthEntry.show()
+			else: hollowWidthEntry.hide()
+			self.mainPanel.resetScroll()
+			self.mainPanel.activateLayout()
+			self.mainPanel.activateLayout()
+			self.mainPanel.scrollToWidget(section)
+			if (not self.ovalDefaultInited):
+				self.ovalDefaultInited = True
+				hollowWidthEntry.entryWidget.setValue(20)
+				self.uniform.editState[EditStateTag.Oval].hollowWidth = 20
+			self.diff = True
+		hollowToggle.onToggle = handleToggle
+
+		self.ovalDefaultInit = lambda: None
+
+		self.initAddColorField_impl(section, EditStateTag.Oval)
+		self.initEraseToggle_impl(section, EditStateTag.Oval)
+
 	def initStamp_impl(self):
 		section = self.addSection_impl(self.mainPanel, "Stamp", EditStateTag.Stamp)
 		
@@ -1425,6 +1469,7 @@ class ApplicationWidget(RectWidgetHLayout):
 		self.initStroke_impl()
 		self.initLine_impl()
 		self.initRect_impl()
+		self.initOval_impl()
 		self.initStamp_impl()
 
 	isOrdinaryPanelState: bool = True
@@ -1462,6 +1507,7 @@ class ApplicationWidget(RectWidgetHLayout):
 			self.rectDefaultInit()
 			self.stampDefaultInit()
 			self.lineDefaultInit()
+			self.ovalDefaultInit()
 			
 		else:
 			match (self.uniform.editStateTag[-1]):
@@ -1471,6 +1517,7 @@ class ApplicationWidget(RectWidgetHLayout):
 	rectDefaultInit:   Callable[[], None] | None = None
 	stampDefaultInit:  Callable[[], None] | None = None
 	lineDefaultInit:  Callable[[], None] | None = None
+	ovalDefaultInit:  Callable[[], None] | None = None
 
 	def setColorPickDefault_impl(self):
 		self.colorPickProvideSetter(self.colorPickRequestGetter())

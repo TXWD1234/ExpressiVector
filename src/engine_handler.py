@@ -22,6 +22,7 @@ class EditStateTag(Enum):
 	FileOp = auto()
 	Stamp = auto()
 	Line = auto()
+	Oval = auto()
 
 # ################ Globals ################
 
@@ -44,7 +45,8 @@ class Global:
 		EditStateTag.Stroke: Engine.StrokeConfig(),
 		EditStateTag.Rect: Engine.RectConfig(),
 		EditStateTag.Stamp: Engine.StampConfig(),
-		EditStateTag.Line: Engine.StrokeConfig()
+		EditStateTag.Line: Engine.StrokeConfig(),
+		EditStateTag.Oval: Engine.OvalConfig()
 		})
 	app: ApplicationWidget | None = None # ApplicationWidget
 	redraw: bool = False # redraw the entire UI
@@ -84,6 +86,15 @@ class EngineHandler:
 				else:
 					self.uniform.engine.rectFinish(vpPos)
 					self.inProgress = False
+					self.endSession_impl()
+			case EditStateTag.Oval:
+				if (not self.inProgress):
+					self.inProgress = True
+					self.uniform.engine.ovalCreate(
+						vpPos, self.uniform.editState[EditStateTag.Oval])
+				else:
+					self.inProgress = False
+					self.uniform.engine.ovalFinish(vpPos)
 					self.endSession_impl()
 			case EditStateTag.Stamp:
 				if (self.uniform.editState[EditStateTag.Stamp].textureId == -1): return

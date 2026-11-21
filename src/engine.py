@@ -125,6 +125,7 @@ class Engine:
 		self.bufferList.append(self.strokeData)
 		self.bufferList.append(self.rectData)
 		self.bufferList.append(self.stampData)
+		self.bufferList.append(self.ovalData)
 
 	@dataclass(slots=True)
 	class ObjectIndex:
@@ -353,7 +354,6 @@ class Engine:
 		self.rectData[-1].dim = dim
 		self.rectDrawSingle_impl(self.canvasCache.canvas, self.canvasCache.scale, self.rectData[-1])
 		self.viewProvider = None
-		self.previewPoint = None
 
 	def rectPreview(self) -> pygame.Surface:
 		if (self.previewPoint is None): return self.canvasCache.canvas
@@ -371,6 +371,101 @@ class Engine:
 						 Engine.scalePos_impl(object.dim, scale),
 		                 width=Engine.scaleDist_impl(object.conf.hollowWidth, scale) if object.conf.hollow else 0)
 
+	# ---------------- Oval ----------------
+
+	@dataclass(slots=True)
+	class OvalConfig:
+		color: Color = Black
+		colorOverride: Color | None = None
+		hollow: bool = False
+		hollowWidth: float = 0.0
+
+		def getColor(self): return self.color if self.colorOverride is None else self.colorOverride
+
+	@dataclass(slots=True)
+	class OvalObject:
+		pos: vec2 = field(default_factory=vec2)
+		dim: vec2 = field(default_factory=vec2)
+		conf: Engine.OvalConfig | None = None
+		engine: Engine | None = None
+
+		def render(self, canvas: pygame.Surface, scale: float):
+			self.engine.ovalDrawSingle_impl(canvas, scale, self)
+
+	ovalData: list[OvalObject] = field(default_factory=list)
+
+	def ovalSerialize(self):
+		self.serializeInt_impl(len(self.ovalData))
+		for obj in self.ovalData:
+			self.serializeVec2_impl(obj.pos)
+			self.serializeVec2_impl(obj.dim)
+			self.serializeColor_impl(obj.conf.getColor())
+			self.serializeFloat_impl(
+				obj.conf.hollowWidth if obj.conf.hollow else 0.0)
+
+	def ovalLoad(self):
+		size = self.loadInt_impl()
+		self.ovalData = [Engine.OvalObject(
+			self.loadVec2_impl(),
+			self.loadVec2_impl(),
+			self.OvalConfig(
+				color=self.loadColor_impl(),
+				hollowWidth=(width := self.loadFloat_impl()),
+				hollow=(width != 0.0)),
+			self) for _ in range(size)]
+
+
+	@staticmethod
+	def ovalMakeTemplateTexture() -> pygame.Surface:
+		texture = pygame.Surface((1024, 1024), flags=pygame.SRCALPHA)
+		pygame.draw.circle(texture, White, (512, 512), 512)
+		return texture
+	ovalTemplateTexture: pygame.Surface = field(default_factory=ovalMakeTemplateTexture)
+
+	# public interface
+	def ovalCreate(self, pa: vec2, config: OvalConfig):
+		self.objectSequence.append(self.ObjectIndex(3, len(self.ovalData)))
+		self.ovalData.append(self.OvalObject(pos=pa, conf=replace(config), engine=self))
+		self.viewProvider = self.ovalPreview
+	def ovalFinish(self, pb: vec2):
+		pos, dim = self.rectFindRect_impl(self.ovalData[-1].pos, pb) # reusing rect's logic
+		self.ovalData[-1].pos = pos
+		self.ovalData[-1].dim = dim
+		self.ovalDrawSingle_impl(self.canvasCache.canvas, self.canvasCache.scale, self.ovalData[-1])
+		self.viewProvider = None
+
+	def ovalPreview(self) -> pygame.Surface:
+		if (self.previewPoint is None): return self.canvasCache.canvas
+		preview = self.canvasCache.canvas.copy()
+		pos, dim = self.rectFindRect_impl(self.ovalData[-1].pos, self.previewPoint)
+		self.ovalDrawSingle_impl(preview, self.canvasCache.scale,
+		                         self.OvalObject(pos, dim, self.ovalData[-1].conf, self))
+		return preview
+
+	def ovalFindTexture_impl(self, dim, color: Color):
+		texture = pygame.transform.smoothscale(self.ovalTemplateTexture, dim)
+		with pygame.PixelArray(texture) as pixels:
+			pixels.replace(White, color, 0.9)
+		return texture
+	
+	def ovalDrawSingle_impl(self, canvas: pygame.Surface, scale: float, obj: OvalObject):
+		if (obj.dim.x == 0.0 or obj.dim.y == 0.0): return
+		texture = self.ovalFindTexture_impl(
+			Engine.scalePos_impl(obj.dim, scale), obj.conf.getColor())
+		
+		if (obj.conf.hollow and
+		    obj.dim.x > obj.conf.hollowWidth * 2 and
+			obj.dim.y > obj.conf.hollowWidth * 2):
+			print(obj.conf.hollowWidth)
+			texture.blit(self.ovalFindTexture_impl(
+				Engine.scalePos_impl(
+					(dim := obj.dim.offset(-obj.conf.hollowWidth * 2, -obj.conf.hollowWidth * 2)), scale),
+					(0, 0, 0, 255)),
+				Engine.scalePos_impl((obj.dim - dim) / 2, scale),
+				special_flags=pygame.BLEND_RGBA_SUB)
+			
+		canvas.blit(texture, Engine.scalePos_impl(obj.pos, scale))
+		
 	# ---------------- Bitmap Stamp ----------------
 
 	stampTextureData: list[pygame.Surface] = field(default_factory=list)
@@ -598,6 +693,7 @@ class Engine:
 		self.objectSequenceSerialize()
 		self.strokeSerialize()
 		self.rectSerialize()
+		self.ovalSerialize()
 		self.stampSerialize()
 	
 	def writeDocHeader_impl(self, f: BinaryIO):
@@ -630,6 +726,7 @@ class Engine:
 		self.objectSequenceLoad()
 		self.strokeLoad()
 		self.rectLoad()
+		self.ovalLoad()
 		self.stampLoad()
 
 	def readBinary_impl(self, f: BinaryIO):

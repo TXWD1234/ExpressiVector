@@ -59,6 +59,10 @@ def scaleToFit(src: ivec2, target: ivec2) -> ivec2:
 	r = min(target.x / src.x, target.y / src.y)
 	return ivec2(src.x * r, src.y * r)
 
+def scaleToFitF(src: vec2, target: vec2) -> vec2:
+	r = min(target.x / src.x, target.y / src.y)
+	return vec2(src.x * r, src.y * r)
+
 def getProgramDir() -> Path:
 	if hasattr(sys, '_MEIPASS'): # when running in pyinstaller executable
 		return Path(sys._MEIPASS)
