@@ -1354,7 +1354,7 @@ class ApplicationWidget(RectWidgetHLayout):
 
 		# Default Stamps
 
-		for i in Path("assets/stamp-builtin").iterdir():
+		for i in (getProgramDir() / "assets/stamp-builtin").iterdir():
 			self.uniform.engine.stampTextureData.append(
 				pygame.transform.smoothscale(
 					(texture := pygame.image.load(str(i)).convert_alpha()),

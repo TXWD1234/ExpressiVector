@@ -449,7 +449,7 @@ class Engine:
 		return texture
 	
 	def ovalDrawSingle_impl(self, canvas: pygame.Surface, scale: float, obj: OvalObject):
-		if (obj.dim.x == 0.0 or obj.dim.y == 0.0): return
+		if (obj.dim.x <= 1.0 or obj.dim.y <= 1.0): return
 		texture = self.ovalFindTexture_impl(
 			Engine.scalePos_impl(obj.dim, scale), obj.conf.getColor())
 		
@@ -566,7 +566,7 @@ class Engine:
 
 
 	def stampPreview(self) -> pygame.Surface:
-		if (self.previewPoint is None): return self.canvasCache.canvas
+		if (self.previewPoint is None or self.stampPreviewConfig.textureId < 0): return self.canvasCache.canvas
 		preview = self.canvasCache.canvas.copy()
 		self.stampDrawSingle_impl(preview, self.canvasCache.scale,
 		                          Engine.StampObject(self.previewPoint, self.stampPreviewConfig))
