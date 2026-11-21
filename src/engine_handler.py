@@ -21,6 +21,7 @@ class EditStateTag(Enum):
 	FileExplore = auto()
 	FileOp = auto()
 	Stamp = auto()
+	Line = auto()
 
 # ################ Globals ################
 
@@ -42,7 +43,8 @@ class Global:
 	editState: dict = field(default_factory=lambda: {
 		EditStateTag.Stroke: Engine.StrokeConfig(),
 		EditStateTag.Rect: Engine.RectConfig(),
-		EditStateTag.Stamp: Engine.StampConfig()
+		EditStateTag.Stamp: Engine.StampConfig(),
+		EditStateTag.Line: Engine.StrokeConfig()
 		})
 	app: ApplicationWidget | None = None # ApplicationWidget
 	redraw: bool = False # redraw the entire UI
@@ -87,30 +89,44 @@ class EngineHandler:
 				if (self.uniform.editState[EditStateTag.Stamp].textureId == -1): return
 				self.uniform.engine.stampCreate(
 					vpPos, self.uniform.editState[EditStateTag.Stamp])
+			case EditStateTag.Line:
+				if (not self.inProgress):
+					self.inProgress = True
+					self.uniform.engine.lineCreate(
+						vpPos, self.uniform.editState[EditStateTag.Line])
+				else:
+					self.uniform.engine.lineAppend(vpPos)
+
+	# @return diff
+	def handleMouseDownRight(self, vpPos: vec2) -> bool:
+		match (self.uniform.editStateTag[-1]):
+			case EditStateTag.Line:
+				self.inProgress = False
+				self.uniform.engine.lineFinish()
+				self.endSession_impl()
+				return True
+		return False
 
 	def handleMouseUp(self, vpPos: vec2):
 		match (self.uniform.editStateTag[-1]):
-			case EditStateTag.Stroke:
-				self.endSession_impl()
-			case EditStateTag.Rect: pass
-			case EditStateTag.Stamp:
-				self.endSession_impl()
+			case EditStateTag.Stroke: self.endSession_impl()
+			case EditStateTag.Stamp: self.endSession_impl()
 
 	def handleMouseMotion(self, vpPos: vec2):
 		self.uniform.engine.previewPoint = vpPos
 		match (self.uniform.editStateTag[-1]):
 			case EditStateTag.Stroke: self.uniform.engine.strokeAppend(vpPos)
-			case EditStateTag.Rect: pass
 			case EditStateTag.Stamp:
 				if (self.uniform.editState[EditStateTag.Stamp].textureId == -1): return
 				self.uniform.engine.stampCreate(
 					vpPos, self.uniform.editState[EditStateTag.Stamp])
 
 	# @return diff
+	# this is basically normal state preview register
 	def handleMouseMotionNormal(self, vpPos: vec2) -> bool:
 		self.uniform.engine.previewPoint = vpPos
 		match (self.uniform.editStateTag[-1]):
 			case EditStateTag.Stroke: return True
-			case EditStateTag.Rect: pass
 			case EditStateTag.Stamp: return True
+			case EditStateTag.Line: return True
 		return False

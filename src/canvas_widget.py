@@ -87,7 +87,7 @@ class CanvasWidget(RectWidgetBase):
 					case 2:  # Middle Click
 						self.uniform.engineState.append(EngineState.Drag)
 					case 3:  # Right Click
-						pass
+						self.diff = self.diff or self.handler.handleMouseDownRight(self.findVPPosFromHanlder_impl(event.pos))
 					case 4:  # Scroll Up
 						self.zoom_impl(self.cameraState.scale / self.cameraConfig.zoomFactor,
 									   self.findVPPosFromHanlder_impl(event.pos))

@@ -255,6 +255,7 @@ class Engine:
 		v1: vec2, v2: vec2, color: Color, width: float):
 
 		diff = v2 - v1
+		if (diff.length() == 0): return
 		pygame.draw.polygon(canvas, color, [
 			Engine.scalePos_impl(v1 + normalize( leftPerp(diff)) * width * 0.5, scale),
 			Engine.scalePos_impl(v1 + normalize(rightPerp(diff)) * width * 0.5, scale),
@@ -264,6 +265,32 @@ class Engine:
 
 		pygame.draw.circle(canvas, color,
 			Engine.scalePos_impl(v2, scale), int(width / 2 * scale))
+
+
+	# ---------------- Line ----------------
+	'''
+	For implementation convenience, since the logic of line and stroke are
+	highly similar, line tool will be reusing stroke tool's infrastructure.
+	'''
+
+	def lineCreate(self, initPos: vec2, config: StrokeConfig):
+		self.strokeCreate(initPos, config)
+		self.viewProvider = self.lineEditPreview
+	def lineAppend(self, pos: vec2): self.strokeAppend(pos)
+	def lineFinish(self): self.viewProvider = None
+
+	def lineSetNormalPreview(self, config: StrokeConfig):
+		self.strokeSetPreview(config)
+	def lineStopNormalPreview(self): self.viewProvider = None
+
+	def lineEditPreview(self) -> pygame.Surface:
+		if (self.previewPoint is None): return self.canvasCache.canvas
+		preview = self.canvasCache.canvas.copy()
+		Engine.strokeDrawSingleAppend_impl(
+			preview, self.canvasCache.scale,
+			self.strokeData[-1].vertices[-1], self.previewPoint,
+			self.strokeData[-1].color, self.strokeData[-1].width)
+		return preview
 
 	# ---------------- Rectangle ----------------
 

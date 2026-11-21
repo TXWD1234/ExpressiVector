@@ -112,6 +112,7 @@ class SidebarWidget(ScrollLayout):
 	def __post_init__(self):
 		self.addTool_impl("assets/file-op-icon.png", EditStateTag.FileOp)
 		self.addTool_impl("assets/stroke-tool-icon.png", EditStateTag.Stroke)
+		self.addTool_impl("assets/line-tool-icon.png", EditStateTag.Line)
 		self.addTool_impl("assets/rect-tool-icon.png", EditStateTag.Rect)
 		self.addTool_impl("assets/stamp-tool-icon.png", EditStateTag.Stamp)
 
@@ -1216,6 +1217,31 @@ class ApplicationWidget(RectWidgetHLayout):
 		self.toolActivationCallback[EditStateTag.Stroke] = activate
 		self.toolDeactivationCallback[EditStateTag.Stroke] = deactivate
 
+	def initLine_impl(self):
+		section = self.addSection_impl(self.mainPanel, "Line", EditStateTag.Line)
+
+		def activate():
+			self.uniform.engine.lineSetNormalPreview(
+				self.uniform.editState[EditStateTag.Line])
+		def deactivate():
+			self.uniform.engine.lineStopNormalPreview()
+		
+		def widthChange(w: IntegerFieldWidget):
+			self.uniform.editState[EditStateTag.Line].width = w.value
+		widthField: IntegerFieldWidget = sectionAdd(
+			section, text="Width",
+			proportion=(1, 2),
+			entryWidgetType=IntegerFieldWidget,
+			entryWidgetArgs={"scope": (1, 100),
+							 "onValueChange": widthChange})
+		self.lineDefaultInit = lambda: widthField.setValue(
+			self.uniform.editState[EditStateTag.Line].width)
+
+		self.initAddColorField_impl(section, EditStateTag.Line)
+		self.initEraseToggle_impl(section, EditStateTag.Line)
+
+		self.toolActivationCallback[EditStateTag.Line] = activate
+		self.toolDeactivationCallback[EditStateTag.Line] = deactivate
 
 	rectDefaultInited: bool = False
 	def initRect_impl(self):
@@ -1306,7 +1332,6 @@ class ApplicationWidget(RectWidgetHLayout):
 			scaleField.setValue(
 				int(self.uniform.editState[EditStateTag.Stamp].scale * 100))
 		self.stampDefaultInit = default
-		
 
 	def initFileOp_impl(self):
 		section = self.addSection_impl(self.mainPanel, "File", EditStateTag.FileOp)
@@ -1398,9 +1423,9 @@ class ApplicationWidget(RectWidgetHLayout):
 		self.configWidget = self.mainPanel
 		self.initFileOp_impl()
 		self.initStroke_impl()
+		self.initLine_impl()
 		self.initRect_impl()
 		self.initStamp_impl()
-
 
 	isOrdinaryPanelState: bool = True
 
@@ -1436,6 +1461,7 @@ class ApplicationWidget(RectWidgetHLayout):
 			self.strokeDefaultInit()
 			self.rectDefaultInit()
 			self.stampDefaultInit()
+			self.lineDefaultInit()
 			
 		else:
 			match (self.uniform.editStateTag[-1]):
@@ -1444,6 +1470,7 @@ class ApplicationWidget(RectWidgetHLayout):
 	strokeDefaultInit: Callable[[], None] | None = None
 	rectDefaultInit:   Callable[[], None] | None = None
 	stampDefaultInit:  Callable[[], None] | None = None
+	lineDefaultInit:  Callable[[], None] | None = None
 
 	def setColorPickDefault_impl(self):
 		self.colorPickProvideSetter(self.colorPickRequestGetter())
