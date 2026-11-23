@@ -33,6 +33,13 @@ The UI system was heavily refactored, and numerous new widgets are added.
 Simultaneously, the main UI design of the application was settled, and mostly implemented.
 Unfortunately, however, the development couldn't finish in the planned 2 weeks, therefore one more week must be dedicated to the development of this project.
 
+## 2026-11-22 21:08:53:<br>Category: Personal Journal<br>Topic: Final Completeion of The Project
+First of all, despite all factors, this project was quite a failure in the same perspective of my usual judgement.
+After the first week where the infrastructure were built, all seriousness I had regarding this project were gone.
+Especially when I realized the nature of Python, I utterly gave up on my original ambitious goal of a maintainable, expandable UI system infrastructure, and a mathematically elegant vector image engine. The computational power Python offer is just inherently insufficient for such target. In a serious production to make a project with Python, any heavy lifting logic must be implemented in C/C++ or any other low level language and expose API to Python. In my opinion, the way I approached the problem in this project where I implement all infrastructures from scratch, *like how I did it in C++*, is fundamentally flawed in Python, simply because how inefficient the language itself is.
+However, the credit of the failure cannot all be blamed on Python. Since this was my first time building a general UI library, I've made several flawed decisions, in which severely affected the expandability of the infrastructure. And my manner of "it is inefficient as is, just ship it" regarding the project contributes to the result a lot as well.
+*And yes, excerpting a famous quote here: "We've spaghettied our way to final completion."*
 
+**Lost resources due to slow review**
 week 3: 14 water, 6 bok choy seeds and 8 cabbage seeds
-week 4: 10 banana, 15 eggplant, 21 water
+week 4: 21 water, 10 banana, 15 eggplant

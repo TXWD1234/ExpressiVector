@@ -6,11 +6,18 @@ Project ExpressiVector is a vector image creator designed to provide user precis
 The project is written in python, backed by pygame (specifically, pygame-ce / pygame Community Edition). However, a remarkably amount of infrastructures are built from scratch, including the vector composing geometry math and the UI widget system.
 
 The project includes:
-- A reusable generic UI Widget System
 - A Vector Image Engine
+- A symmetric document format
+- A reusable generic UI Widget System
+- A File Explorer
+- A HSV Color Picker
 - Various infrastructure required to build the project, such as geometry abstractions and logical helpers
 
 # Screenshot
+![Screenshot](https://github.com/TXWD1234/ExpressiVector/raw/main/docs/readme-assets/demo-3-1.png)
+![Screenshot](https://github.com/TXWD1234/ExpressiVector/raw/main/docs/readme-assets/demo-3-2.png)
+![Screenshot](https://github.com/TXWD1234/ExpressiVector/raw/main/docs/readme-assets/demo-3-3.png)
+![Screenshot](https://github.com/TXWD1234/ExpressiVector/raw/main/docs/readme-assets/demo-3-4.png)
 ![Screenshot](https://github.com/TXWD1234/ExpressiVector/raw/main/docs/readme-assets/demo-2-1.png)
 ![Screenshot](https://github.com/TXWD1234/ExpressiVector/raw/main/docs/readme-assets/demo-1-1.png)
 ![Screenshot](https://github.com/TXWD1234/ExpressiVector/raw/main/docs/readme-assets/demo-1-2.png)
@@ -45,8 +52,25 @@ The project includes:
 - **To pan (move camera):** drag while holding down middle mouse button
 - **To zoom in/out:** scroll middle mouse button
 
+## File Operation
+- Select the desired operation and follow instructions if applicable
+
 ## Stroke Tool:
 - **To draw stroke:** move the cursor while holding down left mouse button
+
+## Line Tool:
+- **To draw line:** click on the canvas to start a line; append a segment by clicking another point
+- **To cancel / exit:** right click
+
+## Rectangle Tool:
+- **To draw rectangle:** click on the canvas to confirm one vertex; move the cursor and click again to confirm the other vertex; *holding down the mouse button is not required during drawing.*
+
+## Oval Tool:
+- **To draw oval:** click on the canvas to confirm one vertex; move the cursor and click again to confirm the other vertex; *holding down the mouse button is not required during drawing.*
+
+## Stamp Tool:
+- **To select icon:** click an icon in the stamp library 
+- **To draw stamp:** while an icon is selected, click the canvas to stamp an icon
 
 # Credit
 - UI Widget System inspired by: [Qt](https://www.qt.io/)
