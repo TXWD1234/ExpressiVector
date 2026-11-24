@@ -279,6 +279,9 @@ class Engine:
 		self.viewProvider = self.lineEditPreview
 	def lineAppend(self, pos: vec2): self.strokeAppend(pos)
 	def lineFinish(self): self.viewProvider = None
+	def lineCancel(self):
+		self.viewProvider = None
+		self.strokeData.pop()
 
 	def lineSetNormalPreview(self, config: StrokeConfig):
 		self.strokeSetPreview(config)
@@ -354,6 +357,9 @@ class Engine:
 		self.rectData[-1].dim = dim
 		self.rectDrawSingle_impl(self.canvasCache.canvas, self.canvasCache.scale, self.rectData[-1])
 		self.viewProvider = None
+	def rectCancel(self):
+		self.viewProvider = None
+		self.rectData.pop()
 
 	def rectPreview(self) -> pygame.Surface:
 		if (self.previewPoint is None): return self.canvasCache.canvas
@@ -433,6 +439,9 @@ class Engine:
 		self.ovalData[-1].dim = dim
 		self.ovalDrawSingle_impl(self.canvasCache.canvas, self.canvasCache.scale, self.ovalData[-1])
 		self.viewProvider = None
+	def ovalCancel(self):
+		self.viewProvider = None
+		self.ovalData.pop()
 
 	def ovalPreview(self) -> pygame.Surface:
 		if (self.previewPoint is None): return self.canvasCache.canvas

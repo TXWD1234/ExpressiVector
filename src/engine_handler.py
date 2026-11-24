@@ -72,6 +72,17 @@ class EngineHandler:
 
 	inProgress: bool = False
 
+	def cancel(self, prevState: EditStateTag):
+		match (prevState):
+			case EditStateTag.Rect:
+				if (self.inProgress): self.uniform.engine.rectCancel()
+			case EditStateTag.Oval:
+				if (self.inProgress): self.uniform.engine.ovalCancel()
+			case EditStateTag.Line:
+				if (self.inProgress): self.uniform.engine.lineCancel()
+		self.inProgress = False
+		self.endSession_impl()
+
 	def handleMouseDown(self, vpPos: vec2):
 		self.uniform.engine.previewPoint = vpPos
 		match (self.uniform.editStateTag[-1]):
@@ -111,12 +122,12 @@ class EngineHandler:
 	# @return diff
 	def handleMouseDownRight(self, vpPos: vec2) -> bool:
 		match (self.uniform.editStateTag[-1]):
-			case EditStateTag.Line:
-				self.inProgress = False
-				self.uniform.engine.lineFinish()
-				self.endSession_impl()
-				return True
-		return False
+			case EditStateTag.Line: self.cancel(EditStateTag.Line)
+			case EditStateTag.Oval: self.cancel(EditStateTag.Oval)
+			case EditStateTag.Rect: self.cancel(EditStateTag.Rect)
+			case _:
+				return False
+		return True
 
 	def handleMouseUp(self, vpPos: vec2):
 		match (self.uniform.editStateTag[-1]):

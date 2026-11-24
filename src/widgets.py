@@ -1494,6 +1494,7 @@ class ApplicationWidget(RectWidgetHLayout):
 		else:
 			if (self.isOrdinaryPanelState):
 				self.configWidget = self.mainPanel
+				self.canvasWidget.handler.cancel(prevState)
 
 			self.configWidget.show()
 			self.configWidget.activateLayout()
