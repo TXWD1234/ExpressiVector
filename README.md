@@ -93,10 +93,11 @@ The following are the features required by the school project:
 
 The following are the features implemented by my own inspiration:
 - Vector Based Images
+- Custom Document format
+- HSV Color Picker
 - Canvas Zooming & Canvas Panning
 - Sophisticated and Reusable UI System
 - Additional Tools
 - Additional Parameter and Configurations
-- Layering
 
 *The project is still in development and had not achieved final completion, therefore expect the absence of some listed features.*
