@@ -247,7 +247,12 @@ class ConfigPanel(ScrollLayout):
 	# ================ Contract Interface ================
 	
 	def draw(self, screen):
-		RectWidgetBase.draw(self, screen)
+		rect = makeRect(self.pos + ivec2(self.styleSheet.margin, self.styleSheet.margin),
+								self.dim - ivec2(self.styleSheet.margin * 2, self.styleSheet.margin * 2))
+		draw.rect(screen,
+                  self.state.colorOverride if self.state.colorOverride is not None else
+                  (self.styleSheet.hoverColor if self.state.hover else self.styleSheet.backgroundColor),
+                  rect, border_radius=self.styleSheet.roundCornerRadius)
 		super().draw(screen)
 
 @dataclass(slots=True)
@@ -1271,6 +1276,8 @@ class ApplicationWidget(RectWidgetHLayout):
 			# show/hide linked widget
 			if (w.on): hollowWidthEntry.show()
 			else: hollowWidthEntry.hide()
+			self.mainPanel.activateLayout()
+			self.mainPanel.activateLayout()
 			self.mainPanel.resetScroll()
 			self.mainPanel.activateLayout()
 			self.mainPanel.activateLayout()
@@ -1314,6 +1321,8 @@ class ApplicationWidget(RectWidgetHLayout):
 			# show/hide linked widget
 			if (w.on): hollowWidthEntry.show()
 			else: hollowWidthEntry.hide()
+			self.mainPanel.activateLayout()
+			self.mainPanel.activateLayout()
 			self.mainPanel.resetScroll()
 			self.mainPanel.activateLayout()
 			self.mainPanel.activateLayout()
