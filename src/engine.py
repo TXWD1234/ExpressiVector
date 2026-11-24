@@ -450,13 +450,13 @@ class Engine:
 	
 	def ovalDrawSingle_impl(self, canvas: pygame.Surface, scale: float, obj: OvalObject):
 		if (obj.dim.x <= 1.0 or obj.dim.y <= 1.0): return
-		texture = self.ovalFindTexture_impl(
-			Engine.scalePos_impl(obj.dim, scale), obj.conf.getColor())
+		dim = Engine.scalePos_impl(obj.dim, scale)
+		if (dim[0] == 0 or dim[1] == 0): return
+		texture = self.ovalFindTexture_impl(dim, obj.conf.getColor())
 		
 		if (obj.conf.hollow and
 		    obj.dim.x > obj.conf.hollowWidth * 2 and
 			obj.dim.y > obj.conf.hollowWidth * 2):
-			print(obj.conf.hollowWidth)
 			texture.blit(self.ovalFindTexture_impl(
 				Engine.scalePos_impl(
 					(dim := obj.dim.offset(-obj.conf.hollowWidth * 2, -obj.conf.hollowWidth * 2)), scale),
